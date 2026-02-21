@@ -113,10 +113,85 @@ export function Summary({ state, onStartOver }: SummaryProps) {
           </p>
         </div>
 
+        {/* Carrier Data Preview — demo only */}
+        <div className="mt-8 border-t-2 border-dashed border-purple-300 pt-6">
+          <div className="bg-purple-50 rounded-xl p-4 border border-purple-200 mb-4">
+            <p className="text-xs font-bold text-purple-700 uppercase tracking-wide text-center">
+              Demo Only — Not User Facing
+            </p>
+            <p className="text-xs text-purple-600 text-center mt-1">
+              Sample of structured data the carrier receives
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {/* Impact coordinates */}
+            {state.impactPoint && (
+              <div className="bg-white rounded-xl p-3 border border-gray-200">
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Impact Coordinates</p>
+                <p className="font-mono text-xs text-gray-700">
+                  {state.impactPoint.lat.toFixed(6)}, {state.impactPoint.lng.toFixed(6)}
+                </p>
+              </div>
+            )}
+
+            {/* Your vehicle data */}
+            <div className="bg-white rounded-xl p-3 border border-gray-200">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Vehicle 1 (Insured)</p>
+              <div className="space-y-1 text-xs font-mono text-gray-700">
+                <p>Pre-impact path: {state.yourVehicle.preImpactPath.length} points</p>
+                <p>Post-impact path: {state.yourVehicle.postImpactPath.length} points</p>
+                {state.yourVehicle.approachBearing !== null && (
+                  <p>Approach bearing: {state.yourVehicle.approachBearing.toFixed(1)}&deg;</p>
+                )}
+                {state.yourVehicle.separationBearing !== null && (
+                  <p>Separation bearing: {state.yourVehicle.separationBearing.toFixed(1)}&deg;</p>
+                )}
+                {state.yourVehicle.headingChange !== null && (
+                  <p>Heading change: {state.yourVehicle.headingChange.toFixed(1)}&deg;</p>
+                )}
+                {state.yourVehicle.restPosition && (
+                  <p>Rest: {state.yourVehicle.restPosition.lat.toFixed(6)}, {state.yourVehicle.restPosition.lng.toFixed(6)}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Other vehicle data */}
+            {isVehicle && "preImpactPath" in state.otherEntity && (
+              <div className="bg-white rounded-xl p-3 border border-gray-200">
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Vehicle 2 (Other Party)</p>
+                <div className="space-y-1 text-xs font-mono text-gray-700">
+                  <p>Pre-impact path: {(state.otherEntity as typeof state.yourVehicle).preImpactPath.length} points</p>
+                  <p>Post-impact path: {(state.otherEntity as typeof state.yourVehicle).postImpactPath.length} points</p>
+                </div>
+              </div>
+            )}
+
+            {/* Derived / computed */}
+            <div className="bg-white rounded-xl p-3 border border-gray-200">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Computed Values</p>
+              <div className="space-y-1 text-xs font-mono text-gray-700">
+                {state.derived.approachAngle !== null && (
+                  <p>Approach angle: {state.derived.approachAngle.toFixed(1)}&deg;</p>
+                )}
+                {state.derived.collisionType && (
+                  <p>Classification: {state.derived.collisionType}</p>
+                )}
+                {state.derived.pdofClockApprox !== null && (
+                  <p>PDOF clock: {state.derived.pdofClockApprox} o&apos;clock</p>
+                )}
+                {state.derived.separationAngle !== null && (
+                  <p>Separation angle: {state.derived.separationAngle.toFixed(1)}&deg;</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Start Over */}
         <button
           onClick={onStartOver}
-          className="w-full py-3 text-base font-semibold text-white bg-blue-600 rounded-xl active:bg-blue-700 transition-colors mt-4"
+          className="w-full py-3 text-base font-semibold text-white bg-blue-600 rounded-xl active:bg-blue-700 transition-colors mt-6"
         >
           Start Over
         </button>
