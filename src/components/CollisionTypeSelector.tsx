@@ -35,7 +35,7 @@ const OPTIONS: { type: CollisionEntityType; label: string; icon: string; descrip
 
 export function CollisionTypeSelector({ onSelect }: CollisionTypeSelectorProps) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-120px)] px-4">
+    <div className="flex flex-col items-center py-2">
       <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
         What did you collide with?
       </h2>
@@ -48,7 +48,7 @@ export function CollisionTypeSelector({ onSelect }: CollisionTypeSelectorProps) 
           <button
             key={option.type}
             onClick={() => onSelect(option.type)}
-            className="w-full flex items-center gap-4 p-4 bg-white border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 active:bg-blue-100 transition-all text-left"
+            className="w-full flex items-center gap-4 p-4 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 active:bg-blue-100 transition-all text-left"
           >
             <span className="text-3xl">{option.icon}</span>
             <div>

@@ -26,7 +26,7 @@ export function SpeedInput({ vehicleLabel, onComplete }: SpeedInputProps) {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-120px)] px-4">
+    <div className="flex flex-col items-center py-2">
       <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
         How was {vehicleLabel} moving?
       </h2>

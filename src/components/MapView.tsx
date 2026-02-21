@@ -213,7 +213,7 @@ export function MapView({
       overlay.removeEventListener("mousemove", onMouseMove);
       overlay.removeEventListener("mouseup", onMouseUp);
     };
-  }, [handleDrawStart, handleDrawMove, handleDrawEnd]);
+  }, [handleDrawStart, handleDrawMove, handleDrawEnd, isDrawMode]);
 
   // Disable map dragging when in draw mode
   useEffect(() => {
@@ -377,21 +377,12 @@ export function MapView({
         )}
       </GoogleMap>
 
-      {/* Drawing overlay — captures finger/mouse in draw mode */}
-      {isDrawMode && (
-        <div
-          ref={overlayRef}
-          className="absolute inset-0 z-10"
-          style={{ touchAction: "none" }}
-        />
-      )}
-
-      {/* Draw mode hint */}
-      {isDrawMode && currentPath.length === 0 && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-green-600 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg">
-          Drag your finger to draw
-        </div>
-      )}
+      {/* Drawing overlay — always rendered, only intercepts in draw mode */}
+      <div
+        ref={overlayRef}
+        className={`absolute inset-0 ${isDrawMode ? "z-10" : "-z-10 pointer-events-none"}`}
+        style={{ touchAction: "none" }}
+      />
     </div>
   );
 }
