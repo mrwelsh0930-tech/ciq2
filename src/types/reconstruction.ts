@@ -58,9 +58,10 @@ export const INITIAL_VEHICLE_DATA: VehicleData = {
 export const STEPS = [
   { id: 0, title: "What happened?", description: "Tell us what you collided with" },
   { id: 1, title: "Before the crash", description: "How were you moving?" },
-  { id: 2, title: "Impact point", description: "Tap where the collision happened" },
-  { id: 3, title: "Your path", description: "Draw your vehicle's path" },
-  { id: 4, title: "Other path", description: "Draw the other vehicle's path" },
-  { id: 5, title: "Rest position", description: "Where did your vehicle end up?" },
-  { id: 6, title: "Summary", description: "Review your reconstruction" },
+  { id: 2, title: "Drawing tool", description: "How this works" },
+  { id: 3, title: "Collision point", description: "Tap where the collision happened" },
+  { id: 4, title: "Your path", description: "Draw your vehicle's path" },
+  { id: 5, title: "Other path", description: "Draw the other vehicle's path" },
+  { id: 6, title: "Rest position", description: "Where did your vehicle end up?" },
+  { id: 7, title: "Summary", description: "Review your reconstruction" },
 ];

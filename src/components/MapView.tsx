@@ -50,6 +50,7 @@ interface MapViewProps {
   restPositions: (LatLng | null)[];
   onMapClick: (latlng: LatLng) => void;
   onPathUpdate: (path: LatLng[]) => void;
+  onDrawEnd?: () => void;
   vehicleLabels?: string[];
 }
 
@@ -63,6 +64,7 @@ export function MapView({
   restPositions,
   onMapClick,
   onPathUpdate,
+  onDrawEnd,
   vehicleLabels = ["You", "Other"],
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -76,10 +78,12 @@ export function MapView({
   const modeRef = useRef(mode);
   const onMapClickRef = useRef(onMapClick);
   const onPathUpdateRef = useRef(onPathUpdate);
+  const onDrawEndRef = useRef(onDrawEnd);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
   useEffect(() => { onPathUpdateRef.current = onPathUpdate; }, [onPathUpdate]);
+  useEffect(() => { onDrawEndRef.current = onDrawEnd; }, [onDrawEnd]);
 
   const isDrawMode = mode === "draw-path";
 
@@ -156,6 +160,9 @@ export function MapView({
     const simplified = simplifyPath(drawPointsRef.current, 0.00001);
     onPathUpdateRef.current(simplified);
     drawPointsRef.current = [];
+    if (simplified.length >= 2 && onDrawEndRef.current) {
+      onDrawEndRef.current();
+    }
   }, []);
 
   // Attach touch/mouse events to drawing overlay
@@ -296,8 +303,8 @@ export function MapView({
             path={cp.path}
             options={{
               strokeColor: cp.color,
-              strokeWeight: 4,
-              strokeOpacity: 0.8,
+              strokeWeight: 6,
+              strokeOpacity: 0.85,
               geodesic: true,
             }}
           />
@@ -321,7 +328,7 @@ export function MapView({
             path={currentPath}
             options={{
               strokeColor: currentPathColor,
-              strokeWeight: 5,
+              strokeWeight: 6,
               strokeOpacity: 0.9,
               geodesic: true,
             }}

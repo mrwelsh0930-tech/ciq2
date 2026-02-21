@@ -7,10 +7,10 @@ interface StepIndicatorProps {
 
 export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
   return (
-    <div className="px-4 py-3 safe-bottom">
-      <div className="w-full bg-gray-200 rounded-full h-1.5">
+    <div className="shrink-0 bg-white px-4 py-3 safe-bottom">
+      <div className="w-full bg-gray-200 rounded-full h-2">
         <div
-          className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+          className="bg-gray-800 h-2 rounded-full transition-all duration-500"
           style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
         />
       </div>

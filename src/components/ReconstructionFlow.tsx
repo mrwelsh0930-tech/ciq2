@@ -19,6 +19,7 @@ import {
 } from "@/lib/geometry";
 import { MapView, MapMode } from "./MapView";
 import { StepIndicator } from "./StepIndicator";
+import { AssuredHeader } from "./AssuredHeader";
 import { CollisionTypeSelector } from "./CollisionTypeSelector";
 import { SpeedInput } from "./SpeedInput";
 import { Summary } from "./Summary";
@@ -47,13 +48,13 @@ const OTHER_PATH_COLOR = "#F59E0B";
 export function ReconstructionFlow() {
   const [state, setState] = useState<ReconstructionState>(INITIAL_STATE);
   const [currentPath, setCurrentPath] = useState<LatLng[]>([]);
+  const [drawComplete, setDrawComplete] = useState(false);
 
   const isVehicle = state.collisionEntityType === "vehicle";
 
   // Determine which steps to show based on collision type
   const activeSteps = STEPS.filter((step) => {
-    // Skip "other path" for non-vehicle collisions
-    if (!isVehicle && step.id === 4) return false;
+    if (!isVehicle && step.id === 5) return false;
     return true;
   });
 
@@ -61,26 +62,39 @@ export function ReconstructionFlow() {
     (s) => s.id === state.currentStep
   );
 
+  // Navigation
+  const goBack = () => {
+    if (currentStepIndex > 0) {
+      const prevStep = activeSteps[currentStepIndex - 1];
+      setState((prev) => ({ ...prev, currentStep: prevStep.id }));
+      setCurrentPath([]);
+      setDrawComplete(false);
+    }
+  };
+
   // Determine map mode
   const getMapMode = (): MapMode => {
+    // If draw is complete, switch to idle so user can review
+    if (drawComplete && (state.currentStep === 4 || state.currentStep === 5)) {
+      return "idle";
+    }
     switch (state.currentStep) {
-      case 2:
-        return state.impactPoint ? "idle" : "place-impact";
       case 3:
+        return state.impactPoint ? "idle" : "place-impact";
       case 4:
-        return "draw-path";
       case 5:
+        return "draw-path";
+      case 6:
         return "place-rest";
       default:
         return "idle";
     }
   };
 
-  // Build completed paths for rendering (combine pre+post into one line per vehicle)
+  // Build completed paths for rendering
   const getCompletedPaths = () => {
     const paths: { path: LatLng[]; color: string }[] = [];
 
-    // Your vehicle
     const yourPre = state.yourVehicle.preImpactPath;
     const yourPost = state.yourVehicle.postImpactPath;
     if (yourPre.length > 0 || yourPost.length > 0) {
@@ -95,7 +109,6 @@ export function ReconstructionFlow() {
       paths.push({ path: fullPath, color: YOUR_PATH_COLOR });
     }
 
-    // Other vehicle
     if (isVehicle && "preImpactPath" in state.otherEntity) {
       const other = state.otherEntity as VehicleData;
       const otherPre = other.preImpactPath;
@@ -132,7 +145,6 @@ export function ReconstructionFlow() {
             description: "",
           };
 
-    // Go to step 1 (speed/movement) instead of straight to map
     setState((prev) => ({
       ...prev,
       currentStep: 1,
@@ -145,7 +157,6 @@ export function ReconstructionFlow() {
     movementType: "forward" | "reverse" | "stopped";
     speedEstimate: number | null;
   }) => {
-    // Save speed data, advance to step 2 (impact point)
     setState((prev) => ({
       ...prev,
       yourVehicle: {
@@ -159,11 +170,9 @@ export function ReconstructionFlow() {
 
   const handleMapClick = useCallback(
     (latlng: LatLng) => {
-      if (state.currentStep === 2) {
-        // Place impact point
+      if (state.currentStep === 3) {
         setState((prev) => ({ ...prev, impactPoint: latlng }));
-      } else if (state.currentStep === 5) {
-        // Place rest position
+      } else if (state.currentStep === 6) {
         setState((prev) => ({
           ...prev,
           yourVehicle: { ...prev.yourVehicle, restPosition: latlng },
@@ -177,17 +186,13 @@ export function ReconstructionFlow() {
     setCurrentPath(path);
   }, []);
 
-  const handleReset = () => {
-    if (state.currentStep === 2) {
-      setState((prev) => ({ ...prev, impactPoint: null }));
-    } else if (state.currentStep === 5) {
-      setState((prev) => ({
-        ...prev,
-        yourVehicle: { ...prev.yourVehicle, restPosition: null },
-      }));
-    } else {
-      setCurrentPath([]);
-    }
+  const handleDrawEnd = useCallback(() => {
+    setDrawComplete(true);
+  }, []);
+
+  const handleRedraw = () => {
+    setCurrentPath([]);
+    setDrawComplete(false);
   };
 
   const computeDerived = (s: ReconstructionState): ReconstructionState => {
@@ -213,7 +218,6 @@ export function ReconstructionFlow() {
       }
     }
 
-    // Post-impact bearings
     if (s.yourVehicle.postImpactPath.length >= 2) {
       const postBearing = getPathEndBearing(s.yourVehicle.postImpactPath);
       updated.yourVehicle.separationBearing = postBearing;
@@ -229,16 +233,14 @@ export function ReconstructionFlow() {
     const currentId = state.currentStep;
     let updatedState = { ...state };
 
-    if (currentId === 3 && currentPath.length >= 2 && state.impactPoint) {
-      // Save your vehicle path — split at impact
+    if (currentId === 4 && currentPath.length >= 2 && state.impactPoint) {
       const { pre, post } = splitPathAtImpact(currentPath, state.impactPoint);
       updatedState.yourVehicle = {
         ...updatedState.yourVehicle,
         preImpactPath: pre,
         postImpactPath: post,
       };
-    } else if (currentId === 4 && isVehicle && currentPath.length >= 2 && state.impactPoint) {
-      // Save other vehicle path — split at impact
+    } else if (currentId === 5 && isVehicle && currentPath.length >= 2 && state.impactPoint) {
       const { pre, post } = splitPathAtImpact(currentPath, state.impactPoint);
       updatedState.otherEntity = {
         ...(updatedState.otherEntity as VehicleData),
@@ -247,10 +249,8 @@ export function ReconstructionFlow() {
       };
     }
 
-    // Compute derived values
     updatedState = computeDerived(updatedState);
 
-    // Find next step
     const nextActiveStep = activeSteps[currentStepIndex + 1];
     if (nextActiveStep) {
       updatedState.currentStep = nextActiveStep.id;
@@ -258,110 +258,165 @@ export function ReconstructionFlow() {
 
     setState(updatedState);
     setCurrentPath([]);
+    setDrawComplete(false);
   };
 
   const canProceed = (): boolean => {
     switch (state.currentStep) {
       case 0:
-        return false; // Handled by CollisionTypeSelector
       case 1:
-        return false; // Handled by SpeedInput
-      case 2:
-        return state.impactPoint !== null;
+        return false;
       case 3:
+        return state.impactPoint !== null;
       case 4:
-        return currentPath.length >= MIN_PATH_POINTS;
       case 5:
+        return currentPath.length >= MIN_PATH_POINTS;
+      case 6:
         return state.yourVehicle.restPosition !== null;
       default:
         return false;
     }
   };
 
-  const canUndo = (): boolean => {
-    if (state.currentStep === 2) return state.impactPoint !== null;
-    if (state.currentStep === 5) return state.yourVehicle.restPosition !== null;
-    return currentPath.length > 0;
-  };
-
   const handleStartOver = () => {
     setState(INITIAL_STATE);
     setCurrentPath([]);
+    setDrawComplete(false);
   };
 
-  // Get instruction text for current step
-  const getInstruction = (): string => {
+  // Get the current draw color based on step
+  const getCurrentPathColor = (): string => {
+    if (state.currentStep === 5) return OTHER_PATH_COLOR;
+    return YOUR_PATH_COLOR;
+  };
+
+  // Get instruction text for map steps
+  const getMapInstruction = (): string => {
     switch (state.currentStep) {
-      case 2:
-        return state.impactPoint
-          ? "Tap to move the impact point, or continue."
-          : "Tap where the collision happened.";
       case 3:
-        return "Draw your path — start where you came from, go through the red dot, end where you went.";
+        return state.impactPoint
+          ? "Tap to reposition, or confirm below."
+          : "Tap where the collision happened.";
       case 4:
-        return "Now draw the other vehicle's path through the red dot.";
+        return drawComplete
+          ? "Does this look like the path driven by your vehicle?"
+          : "Draw the path driven by your vehicle, leading up to and after the collision.";
       case 5:
+        return drawComplete
+          ? "Does this look like the path driven by the other vehicle?"
+          : "Draw the path driven by the other vehicle, leading up to and after the collision.";
+      case 6:
         return "Tap where your vehicle came to a stop.";
       default:
         return "";
     }
   };
 
-  // Get the current draw color based on step
-  const getCurrentPathColor = (): string => {
-    if (state.currentStep === 4) return OTHER_PATH_COLOR;
-    return YOUR_PATH_COLOR;
-  };
+  // Check if we have completed paths to show labels for
+  const hasYourPath = state.yourVehicle.preImpactPath.length > 0;
+  const hasOtherPath = isVehicle && "preImpactPath" in state.otherEntity &&
+    (state.otherEntity as VehicleData).preImpactPath.length > 0;
 
-  // Step 0: Collision type selection
+  // ─── Shared layout wrapper ───
+  const PageShell = ({
+    children,
+    showBack = true,
+  }: {
+    children: React.ReactNode;
+    showBack?: boolean;
+  }) => (
+    <div className="fixed inset-0 flex flex-col bg-[#F5F5F5]">
+      <AssuredHeader onBack={showBack ? goBack : undefined} showBack={showBack} />
+      {children}
+      <StepIndicator
+        currentStep={currentStepIndex}
+        totalSteps={activeSteps.length}
+      />
+    </div>
+  );
+
+  // ─── Step 0: Collision type ───
   if (state.currentStep === 0) {
     return (
-      <div className="fixed inset-0 flex flex-col bg-gray-50">
-        <div className="flex-1 overflow-y-auto">
-          <CollisionTypeSelector onSelect={handleCollisionTypeSelect} />
+      <PageShell showBack={false}>
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-sm p-6 max-w-sm mx-auto">
+            <CollisionTypeSelector onSelect={handleCollisionTypeSelect} />
+          </div>
         </div>
-        <StepIndicator
-          currentStep={0}
-          totalSteps={activeSteps.length}
-        />
-      </div>
+      </PageShell>
     );
   }
 
-  // Step 1: Speed/movement input (BEFORE map)
+  // ─── Step 1: Speed/movement ───
   if (state.currentStep === 1) {
     return (
-      <div className="fixed inset-0 flex flex-col bg-gray-50">
-        <div className="flex-1 overflow-y-auto">
-          <SpeedInput
-            vehicleLabel="your vehicle"
-            onComplete={handleSpeedComplete}
-          />
+      <PageShell>
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="bg-white rounded-2xl shadow-sm p-6 max-w-sm mx-auto">
+            <SpeedInput
+              vehicleLabel="your vehicle"
+              onComplete={handleSpeedComplete}
+            />
+          </div>
         </div>
-        <StepIndicator
-          currentStep={currentStepIndex}
-          totalSteps={activeSteps.length}
-        />
-      </div>
+      </PageShell>
     );
   }
 
-  // Step 6: Summary
-  if (state.currentStep === 6) {
+  // ─── Step 2: Pre-draw instruction ───
+  if (state.currentStep === 2) {
     return (
-      <div className="fixed inset-0 flex flex-col bg-gray-50">
+      <PageShell>
+        <div className="flex-1 overflow-y-auto px-4 py-4 flex items-center">
+          <div className="bg-white rounded-2xl shadow-sm p-6 max-w-sm mx-auto w-full">
+            <h2 className="text-xl font-bold text-gray-900 text-center mb-3">
+              Now we&apos;ll use a simple drawing tool to show what happened.
+            </h2>
+            <p className="text-gray-500 text-center mb-6 text-sm">
+              Draw each vehicle&apos;s full path with your finger, leading up to and after the collision.
+            </p>
+
+            {/* Illustration */}
+            <div className="bg-gray-100 rounded-xl p-6 mb-6 flex items-center justify-center">
+              <svg width="200" height="100" viewBox="0 0 200 100" fill="none">
+                {/* Blue path (horizontal) */}
+                <line x1="20" y1="50" x2="120" y2="50" stroke="#3B82F6" strokeWidth="6" strokeLinecap="round"/>
+                {/* Red path (vertical) */}
+                <line x1="100" y1="20" x2="100" y2="90" stroke="#EF4444" strokeWidth="6" strokeLinecap="round"/>
+                {/* Impact dot */}
+                <circle cx="100" cy="50" r="8" fill="#EF4444" stroke="white" strokeWidth="3"/>
+                {/* Blue car */}
+                <rect x="112" y="44" width="16" height="12" rx="2" fill="#3B82F6" stroke="white" strokeWidth="1.5"/>
+                {/* Red car */}
+                <rect x="94" y="76" width="12" height="16" rx="2" fill="#EF4444" stroke="white" strokeWidth="1.5"/>
+              </svg>
+            </div>
+
+            <button
+              onClick={goToNextStep}
+              className="w-full py-3 text-base font-semibold text-white bg-blue-600 rounded-xl active:bg-blue-700 transition-colors"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </PageShell>
+    );
+  }
+
+  // ─── Step 7: Summary ───
+  if (state.currentStep === 7) {
+    return (
+      <PageShell>
         <div className="flex-1 overflow-y-auto">
           <Summary state={state} onStartOver={handleStartOver} />
         </div>
-        <StepIndicator
-          currentStep={currentStepIndex}
-          totalSteps={activeSteps.length}
-        />
-      </div>
+      </PageShell>
     );
   }
 
-  // Map-based steps (2-5)
+  // ─── Map-based steps (3-6) ───
   const otherEntityPos =
     !isVehicle && "position" in state.otherEntity
       ? (state.otherEntity as OtherEntityData).position
@@ -374,20 +429,24 @@ export function ReconstructionFlow() {
       : null,
   ];
 
+  const isDrawStep = state.currentStep === 4 || state.currentStep === 5;
+  const showConfirmation = isDrawStep && drawComplete && currentPath.length >= MIN_PATH_POINTS;
+
   return (
-    <div className="fixed inset-0 flex flex-col bg-gray-100">
-      {/* Fixed header — won't crop */}
-      <div className="shrink-0 bg-white px-4 pt-3 pb-2 safe-top border-b border-gray-200">
-        <h2 className="text-lg font-bold text-gray-900 text-center">
-          {activeSteps[currentStepIndex]?.title}
-        </h2>
-        <p className="text-xs text-gray-500 text-center mt-0.5">
-          {getInstruction()}
-        </p>
+    <div className="fixed inset-0 flex flex-col bg-[#F5F5F5]">
+      <AssuredHeader onBack={goBack} />
+
+      {/* Instruction card above map */}
+      <div className="shrink-0 px-4 pt-2 pb-2">
+        <div className="bg-white rounded-xl px-4 py-3 shadow-sm">
+          <p className="text-base font-semibold text-gray-900 text-center">
+            {getMapInstruction()}
+          </p>
+        </div>
       </div>
 
       {/* Map fills remaining space */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative mx-4 mb-2 rounded-xl overflow-hidden shadow-sm">
         <MapView
           mode={getMapMode()}
           impactPoint={state.impactPoint}
@@ -398,29 +457,58 @@ export function ReconstructionFlow() {
           restPositions={restPositions}
           onMapClick={handleMapClick}
           onPathUpdate={handlePathUpdate}
+          onDrawEnd={handleDrawEnd}
         />
 
-        {/* Undo button overlaid on map */}
-        {canUndo() && (
+        {/* Vehicle label pills */}
+        {(hasYourPath || (isDrawStep && state.currentStep === 5 && currentPath.length > 0) || hasOtherPath) && (
+          <div className="absolute bottom-3 left-3 z-20 space-y-1.5">
+            {(hasYourPath || (state.currentStep === 4 && currentPath.length > 0)) && (
+              <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: YOUR_PATH_COLOR }} />
+                <span className="text-xs font-medium text-gray-700">Your vehicle</span>
+              </div>
+            )}
+            {(hasOtherPath || (state.currentStep === 5 && currentPath.length > 0)) && (
+              <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: OTHER_PATH_COLOR }} />
+                <span className="text-xs font-medium text-gray-700">Other vehicle</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom buttons */}
+      <div className="shrink-0 bg-white border-t border-gray-200 px-4 py-3">
+        {showConfirmation ? (
+          /* Redraw / Confirm buttons */
+          <div className="flex gap-3">
+            <button
+              onClick={handleRedraw}
+              className="flex-1 py-3 text-base font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-xl active:bg-gray-50 transition-colors"
+            >
+              Redraw
+            </button>
+            <button
+              onClick={goToNextStep}
+              className="flex-1 py-3 text-base font-semibold text-white bg-blue-600 rounded-xl active:bg-blue-700 transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        ) : (
+          /* Standard Continue / Confirm button */
           <button
-            onClick={handleReset}
-            className="absolute bottom-4 left-4 z-20 px-4 py-2 bg-white/90 backdrop-blur rounded-full shadow-lg text-sm font-medium text-gray-700 active:bg-gray-100"
+            onClick={state.currentStep === 3 ? goToNextStep : goToNextStep}
+            disabled={!canProceed()}
+            className="w-full py-3 text-base font-semibold text-white bg-blue-600 rounded-xl disabled:bg-blue-300 disabled:cursor-not-allowed active:bg-blue-700 transition-colors"
           >
-            Redo
+            {state.currentStep === 3 ? "Confirm location" : "Continue"}
           </button>
         )}
       </div>
 
-      {/* Bottom: Continue button + progress */}
-      <div className="shrink-0 bg-white border-t border-gray-200 px-4 py-3">
-        <button
-          onClick={goToNextStep}
-          disabled={!canProceed()}
-          className="w-full py-3 text-base font-semibold text-white bg-blue-600 rounded-xl disabled:bg-blue-300 disabled:cursor-not-allowed active:bg-blue-700 transition-colors"
-        >
-          Continue
-        </button>
-      </div>
       <StepIndicator
         currentStep={currentStepIndex}
         totalSteps={activeSteps.length}
