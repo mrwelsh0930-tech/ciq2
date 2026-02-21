@@ -365,12 +365,14 @@ export function ReconstructionFlow() {
   // Step 0: Collision type selection
   if (state.currentStep === 0) {
     return (
-      <div className="h-screen flex flex-col bg-gray-50">
+      <div className="fixed inset-0 flex flex-col bg-gray-50">
         <StepIndicator
           currentStep={0}
           totalSteps={activeSteps.length}
         />
-        <CollisionTypeSelector onSelect={handleCollisionTypeSelect} />
+        <div className="flex-1 overflow-y-auto">
+          <CollisionTypeSelector onSelect={handleCollisionTypeSelect} />
+        </div>
       </div>
     );
   }
@@ -378,15 +380,17 @@ export function ReconstructionFlow() {
   // Step 7: Speed input
   if (state.currentStep === 7) {
     return (
-      <div className="h-screen flex flex-col bg-gray-50">
+      <div className="fixed inset-0 flex flex-col bg-gray-50">
         <StepIndicator
           currentStep={currentStepIndex}
           totalSteps={activeSteps.length}
         />
-        <SpeedInput
-          vehicleLabel="your vehicle"
-          onComplete={handleSpeedComplete}
-        />
+        <div className="flex-1 overflow-y-auto">
+          <SpeedInput
+            vehicleLabel="your vehicle"
+            onComplete={handleSpeedComplete}
+          />
+        </div>
       </div>
     );
   }
@@ -394,12 +398,14 @@ export function ReconstructionFlow() {
   // Step 8: Summary
   if (state.currentStep === 8) {
     return (
-      <div className="h-screen flex flex-col bg-gray-50">
+      <div className="fixed inset-0 flex flex-col bg-gray-50">
         <StepIndicator
           currentStep={currentStepIndex}
           totalSteps={activeSteps.length}
         />
-        <Summary state={state} onStartOver={handleStartOver} />
+        <div className="flex-1 overflow-y-auto">
+          <Summary state={state} onStartOver={handleStartOver} />
+        </div>
       </div>
     );
   }
@@ -418,7 +424,7 @@ export function ReconstructionFlow() {
   ];
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="fixed inset-0 flex flex-col bg-gray-50">
       <StepIndicator
         currentStep={currentStepIndex}
         totalSteps={activeSteps.length}
@@ -446,7 +452,7 @@ export function ReconstructionFlow() {
         canNext={canProceed()}
         canUndo={canUndo()}
         nextLabel={
-          state.currentStep === 6 ? "Continue to speed" : "Continue"
+          state.currentStep === 7 ? "Continue to speed" : "Continue"
         }
         instruction={getInstruction()}
       />
