@@ -8,6 +8,7 @@ import {
   Polyline,
 } from "@react-google-maps/api";
 import { LatLng } from "@/types/reconstruction";
+import { simplifyPath } from "@/lib/simplify";
 
 const MAP_CONTAINER_STYLE = {
   width: "100%",
@@ -25,8 +26,6 @@ const IMPACT_PULSE_ICON = {
   strokeColor: "#FFFFFF",
   strokeWeight: 3,
 };
-
-const SNAP_THRESHOLD_PX = 30;
 
 export type MapMode =
   | "idle"
@@ -63,21 +62,24 @@ export function MapView({
   vehicleLabels = ["You", "Other"],
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const isDrawingRef = useRef(false);
+  const drawPointsRef = useRef<LatLng[]>([]);
 
-  // Use refs to avoid stale closures in Google Maps event handlers
+  // Refs for stable access in event handlers
   const modeRef = useRef(mode);
   const impactPointRef = useRef(impactPoint);
-  const currentPathRef = useRef(currentPath);
   const onMapClickRef = useRef(onMapClick);
   const onPathUpdateRef = useRef(onPathUpdate);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
   useEffect(() => { impactPointRef.current = impactPoint; }, [impactPoint]);
-  useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
   useEffect(() => { onPathUpdateRef.current = onPathUpdate; }, [onPathUpdate]);
+
+  const isDrawMode = mode === "draw-pre-path" || mode === "draw-post-path";
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
@@ -93,9 +95,7 @@ export function MapView({
             lng: pos.coords.longitude,
           });
         },
-        () => {
-          // Silently fail - use default center
-        }
+        () => {}
       );
     }
   }, []);
@@ -105,56 +105,133 @@ export function MapView({
     setMapReady(true);
   }, []);
 
-  // Stable click handler that reads from refs
+  // Convert screen pixel to lat/lng using map bounds
+  const pixelToLatLng = useCallback((clientX: number, clientY: number): LatLng | null => {
+    const map = mapRef.current;
+    const overlay = overlayRef.current;
+    if (!map || !overlay) return null;
+
+    const rect = overlay.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    const bounds = map.getBounds();
+    if (!bounds) return null;
+
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+
+    const lat = ne.lat() - (y / rect.height) * (ne.lat() - sw.lat());
+    const lng = sw.lng() + (x / rect.width) * (ne.lng() - sw.lng());
+
+    return { lat, lng };
+  }, []);
+
+  // Drawing handlers
+  const handleDrawStart = useCallback((clientX: number, clientY: number) => {
+    if (!modeRef.current.startsWith("draw-")) return;
+    isDrawingRef.current = true;
+    const point = pixelToLatLng(clientX, clientY);
+    if (point) {
+      drawPointsRef.current = [point];
+      onPathUpdateRef.current([point]);
+    }
+  }, [pixelToLatLng]);
+
+  const handleDrawMove = useCallback((clientX: number, clientY: number) => {
+    if (!isDrawingRef.current) return;
+    const point = pixelToLatLng(clientX, clientY);
+    if (point) {
+      drawPointsRef.current.push(point);
+      const simplified = simplifyPath(drawPointsRef.current, 0.000005);
+      onPathUpdateRef.current(simplified);
+    }
+  }, [pixelToLatLng]);
+
+  const handleDrawEnd = useCallback(() => {
+    if (!isDrawingRef.current) return;
+    isDrawingRef.current = false;
+
+    const simplified = simplifyPath(drawPointsRef.current, 0.00001);
+    const impact = impactPointRef.current;
+
+    // Snap end to impact for pre-path
+    if (impact && modeRef.current === "draw-pre-path" && simplified.length > 0) {
+      simplified[simplified.length - 1] = impact;
+    }
+    // Snap start to impact for post-path
+    if (impact && modeRef.current === "draw-post-path" && simplified.length > 0) {
+      simplified[0] = impact;
+    }
+
+    onPathUpdateRef.current(simplified);
+    drawPointsRef.current = [];
+  }, []);
+
+  // Attach touch/mouse events to drawing overlay
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (!modeRef.current.startsWith("draw-")) return;
+      e.preventDefault();
+      handleDrawStart(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isDrawingRef.current) return;
+      e.preventDefault();
+      handleDrawMove(e.touches[0].clientX, e.touches[0].clientY);
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      handleDrawEnd();
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (!modeRef.current.startsWith("draw-")) return;
+      handleDrawStart(e.clientX, e.clientY);
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      handleDrawMove(e.clientX, e.clientY);
+    };
+    const onMouseUp = () => {
+      handleDrawEnd();
+    };
+
+    overlay.addEventListener("touchstart", onTouchStart, { passive: false });
+    overlay.addEventListener("touchmove", onTouchMove, { passive: false });
+    overlay.addEventListener("touchend", onTouchEnd, { passive: false });
+    overlay.addEventListener("mousedown", onMouseDown);
+    overlay.addEventListener("mousemove", onMouseMove);
+    overlay.addEventListener("mouseup", onMouseUp);
+
+    return () => {
+      overlay.removeEventListener("touchstart", onTouchStart);
+      overlay.removeEventListener("touchmove", onTouchMove);
+      overlay.removeEventListener("touchend", onTouchEnd);
+      overlay.removeEventListener("mousedown", onMouseDown);
+      overlay.removeEventListener("mousemove", onMouseMove);
+      overlay.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [handleDrawStart, handleDrawMove, handleDrawEnd]);
+
+  // Disable map dragging when in draw mode
+  useEffect(() => {
+    if (mapRef.current) {
+      mapRef.current.setOptions({ draggable: !isDrawMode });
+    }
+  }, [isDrawMode]);
+
+  // Handle taps for placement modes only
   const handleMapClick = useCallback(
     (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
-
       const currentMode = modeRef.current;
-      const impact = impactPointRef.current;
-      const path = currentPathRef.current;
-
-      const clickedPoint: LatLng = {
-        lat: e.latLng.lat(),
-        lng: e.latLng.lng(),
-      };
-
       if (currentMode === "place-impact" || currentMode === "place-rest" || currentMode === "place-entity") {
-        onMapClickRef.current(clickedPoint);
-        return;
-      }
-
-      if (currentMode === "draw-pre-path" || currentMode === "draw-post-path") {
-        // Check if click is near impact point for snapping
-        if (impact && mapRef.current) {
-          const projection = mapRef.current.getProjection();
-          if (projection) {
-            const impactPixel = projection.fromLatLngToPoint(
-              new google.maps.LatLng(impact.lat, impact.lng)
-            );
-            const clickPixel = projection.fromLatLngToPoint(
-              new google.maps.LatLng(clickedPoint.lat, clickedPoint.lng)
-            );
-
-            if (impactPixel && clickPixel) {
-              const zoom = mapRef.current.getZoom() || DEFAULT_ZOOM;
-              const scale = Math.pow(2, zoom);
-              const dx = (impactPixel.x - clickPixel.x) * scale;
-              const dy = (impactPixel.y - clickPixel.y) * scale;
-              const distPx = Math.sqrt(dx * dx + dy * dy);
-
-              if (distPx < SNAP_THRESHOLD_PX) {
-                onPathUpdateRef.current([...path, impact]);
-                return;
-              }
-            }
-          }
-        }
-
-        onPathUpdateRef.current([...path, clickedPoint]);
+        onMapClickRef.current({ lat: e.latLng.lat(), lng: e.latLng.lng() });
       }
     },
-    [] // Empty deps - reads everything from refs
+    []
   );
 
   if (loadError) {
@@ -179,129 +256,142 @@ export function MapView({
   const center = userLocation || DEFAULT_CENTER;
 
   const pathColors = {
-    preYou: "#3B82F6",
-    preOther: "#F59E0B",
-    postYou: "#6366F1",
-    postOther: "#F97316",
     current: "#10B981",
   };
 
   return (
-    <GoogleMap
-      mapContainerStyle={MAP_CONTAINER_STYLE}
-      center={impactPoint || center}
-      zoom={DEFAULT_ZOOM}
-      onLoad={onMapLoad}
-      onClick={handleMapClick}
-      options={{
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeId: "satellite",
-        gestureHandling: "greedy",
-        clickableIcons: false,
-      }}
-    >
-      {/* Impact point marker */}
-      {impactPoint && (
-        <Marker
-          position={impactPoint}
-          icon={IMPACT_PULSE_ICON}
-          title="Impact point"
-          zIndex={100}
-        />
-      )}
+    <div className="relative w-full h-full">
+      <GoogleMap
+        mapContainerStyle={MAP_CONTAINER_STYLE}
+        center={impactPoint || center}
+        zoom={DEFAULT_ZOOM}
+        onLoad={onMapLoad}
+        onClick={handleMapClick}
+        options={{
+          disableDefaultUI: true,
+          zoomControl: true,
+          mapTypeId: "satellite",
+          gestureHandling: "greedy",
+          clickableIcons: false,
+        }}
+      >
+        {/* Impact point */}
+        {impactPoint && (
+          <Marker
+            position={impactPoint}
+            icon={IMPACT_PULSE_ICON}
+            title="Impact point"
+            zIndex={100}
+          />
+        )}
 
-      {/* Completed paths */}
-      {completedPaths.map((cp, i) => (
-        <Polyline
-          key={`completed-${i}`}
-          path={cp.path}
-          options={{
-            strokeColor: cp.color,
-            strokeWeight: 4,
-            strokeOpacity: 0.8,
-            geodesic: true,
-          }}
-        />
-      ))}
+        {/* Completed paths */}
+        {completedPaths.map((cp, i) => (
+          <Polyline
+            key={`completed-${i}`}
+            path={cp.path}
+            options={{
+              strokeColor: cp.color,
+              strokeWeight: 4,
+              strokeOpacity: 0.8,
+              geodesic: true,
+            }}
+          />
+        ))}
 
-      {/* Current drawing path */}
-      {mapReady && currentPath.length > 0 && (
-        <Polyline
-          path={currentPath}
-          options={{
-            strokeColor: pathColors.current,
-            strokeWeight: 4,
-            strokeOpacity: 0.9,
-            geodesic: true,
-            icons: [
-              {
-                icon: {
-                  path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-                  scale: 3,
-                  strokeColor: pathColors.current,
+        {/* Current drawing path */}
+        {mapReady && currentPath.length > 1 && (
+          <Polyline
+            path={currentPath}
+            options={{
+              strokeColor: pathColors.current,
+              strokeWeight: 5,
+              strokeOpacity: 0.9,
+              geodesic: true,
+              icons: [
+                {
+                  icon: {
+                    path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
+                    scale: 3,
+                    strokeColor: pathColors.current,
+                  },
+                  offset: "100%",
                 },
-                offset: "100%",
-              },
-            ],
-          }}
+              ],
+            }}
+          />
+        )}
+
+        {/* Start marker for current path */}
+        {mapReady && currentPath.length > 0 && (
+          <Marker
+            position={currentPath[0]}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 7,
+              fillColor: pathColors.current,
+              fillOpacity: 1,
+              strokeColor: "#FFFFFF",
+              strokeWeight: 2,
+            }}
+            zIndex={50}
+          />
+        )}
+
+        {/* Other entity position */}
+        {otherEntityPosition && (
+          <Marker
+            position={otherEntityPosition}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: "#F59E0B",
+              fillOpacity: 0.9,
+              strokeColor: "#FFFFFF",
+              strokeWeight: 2,
+            }}
+            title="Other entity"
+            zIndex={90}
+          />
+        )}
+
+        {/* Rest position markers */}
+        {restPositions.map(
+          (pos, i) =>
+            pos && (
+              <Marker
+                key={`rest-${i}`}
+                position={pos}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: "#8B5CF6",
+                  fillOpacity: 0.9,
+                  strokeColor: "#FFFFFF",
+                  strokeWeight: 2,
+                }}
+                title={`${vehicleLabels[i]} rest position`}
+                zIndex={80}
+              />
+            )
+        )}
+      </GoogleMap>
+
+      {/* Drawing overlay — captures finger/mouse in draw mode */}
+      {isDrawMode && (
+        <div
+          ref={overlayRef}
+          className="absolute inset-0 z-10"
+          style={{ touchAction: "none" }}
         />
       )}
 
-      {/* Current path point markers */}
-      {mapReady && currentPath.map((point, i) => (
-        <Marker
-          key={`current-${i}`}
-          position={point}
-          icon={{
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 5,
-            fillColor: pathColors.current,
-            fillOpacity: 1,
-            strokeColor: "#FFFFFF",
-            strokeWeight: 2,
-          }}
-          zIndex={50}
-        />
-      ))}
-
-      {/* Other entity position (for object/animal/property) */}
-      {otherEntityPosition && (
-        <Marker
-          position={otherEntityPosition}
-          icon={{
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: "#F59E0B",
-            fillOpacity: 0.9,
-            strokeColor: "#FFFFFF",
-            strokeWeight: 2,
-          }}
-          title="Other entity"
-          zIndex={90}
-        />
+      {/* Draw mode hint */}
+      {isDrawMode && currentPath.length === 0 && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-green-600 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg">
+          Drag your finger to draw
+        </div>
       )}
-
-      {/* Rest position markers */}
-      {restPositions.map(
-        (pos, i) =>
-          pos && (
-            <Marker
-              key={`rest-${i}`}
-              position={pos}
-              icon={{
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 8,
-                fillColor: "#8B5CF6",
-                fillOpacity: 0.9,
-                strokeColor: "#FFFFFF",
-                strokeWeight: 2,
-              }}
-              title={`${vehicleLabels[i]} rest position`}
-              zIndex={80}
-            />
-          )
-      )}
-    </GoogleMap>
+    </div>
   );
 }

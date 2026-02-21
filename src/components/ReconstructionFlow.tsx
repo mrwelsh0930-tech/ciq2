@@ -346,15 +346,23 @@ export function ReconstructionFlow() {
       case 1:
         return state.impactPoint
           ? "Impact point set. Tap again to move it, or continue."
-          : "Tap on the map where the vehicles made contact.";
+          : "Tap where the vehicles made contact.";
       case 2:
-        return "Tap points along your path before the crash. End near the collision point.";
+        return currentPath.length > 0
+          ? "Path drawn. Redraw or continue."
+          : "Drag your finger to draw your path before the crash.";
       case 3:
-        return "Tap points along the other vehicle's path before the crash.";
+        return currentPath.length > 0
+          ? "Path drawn. Redraw or continue."
+          : "Drag to draw the other vehicle's path before the crash.";
       case 4:
-        return "Tap points showing where your vehicle went after the crash.";
+        return currentPath.length > 0
+          ? "Path drawn. Redraw or continue."
+          : "Drag to show where your vehicle went after the crash.";
       case 5:
-        return "Tap points showing where the other vehicle went after.";
+        return currentPath.length > 0
+          ? "Path drawn. Redraw or continue."
+          : "Drag to show where the other vehicle went after.";
       case 6:
         return "Tap where your vehicle came to a stop.";
       default:
