@@ -64,6 +64,20 @@ export function MapView({
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const [userLocation, setUserLocation] = useState<LatLng | null>(null);
+  const [mapReady, setMapReady] = useState(false);
+
+  // Use refs to avoid stale closures in Google Maps event handlers
+  const modeRef = useRef(mode);
+  const impactPointRef = useRef(impactPoint);
+  const currentPathRef = useRef(currentPath);
+  const onMapClickRef = useRef(onMapClick);
+  const onPathUpdateRef = useRef(onPathUpdate);
+
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { impactPointRef.current = impactPoint; }, [impactPoint]);
+  useEffect(() => { currentPathRef.current = currentPath; }, [currentPath]);
+  useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
+  useEffect(() => { onPathUpdateRef.current = onPathUpdate; }, [onPathUpdate]);
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
@@ -88,29 +102,35 @@ export function MapView({
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
+    setMapReady(true);
   }, []);
 
+  // Stable click handler that reads from refs
   const handleMapClick = useCallback(
     (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
+
+      const currentMode = modeRef.current;
+      const impact = impactPointRef.current;
+      const path = currentPathRef.current;
 
       const clickedPoint: LatLng = {
         lat: e.latLng.lat(),
         lng: e.latLng.lng(),
       };
 
-      if (mode === "place-impact" || mode === "place-rest" || mode === "place-entity") {
-        onMapClick(clickedPoint);
+      if (currentMode === "place-impact" || currentMode === "place-rest" || currentMode === "place-entity") {
+        onMapClickRef.current(clickedPoint);
         return;
       }
 
-      if (mode === "draw-pre-path" || mode === "draw-post-path") {
+      if (currentMode === "draw-pre-path" || currentMode === "draw-post-path") {
         // Check if click is near impact point for snapping
-        if (impactPoint && mapRef.current) {
+        if (impact && mapRef.current) {
           const projection = mapRef.current.getProjection();
           if (projection) {
             const impactPixel = projection.fromLatLngToPoint(
-              new google.maps.LatLng(impactPoint.lat, impactPoint.lng)
+              new google.maps.LatLng(impact.lat, impact.lng)
             );
             const clickPixel = projection.fromLatLngToPoint(
               new google.maps.LatLng(clickedPoint.lat, clickedPoint.lng)
@@ -124,18 +144,17 @@ export function MapView({
               const distPx = Math.sqrt(dx * dx + dy * dy);
 
               if (distPx < SNAP_THRESHOLD_PX) {
-                // Snap to impact
-                onPathUpdate([...currentPath, impactPoint]);
+                onPathUpdateRef.current([...path, impact]);
                 return;
               }
             }
           }
         }
 
-        onPathUpdate([...currentPath, clickedPoint]);
+        onPathUpdateRef.current([...path, clickedPoint]);
       }
     },
-    [mode, impactPoint, currentPath, onMapClick, onPathUpdate]
+    [] // Empty deps - reads everything from refs
   );
 
   if (loadError) {
@@ -160,11 +179,11 @@ export function MapView({
   const center = userLocation || DEFAULT_CENTER;
 
   const pathColors = {
-    preYou: "#3B82F6",     // blue
-    preOther: "#F59E0B",   // amber
-    postYou: "#6366F1",    // indigo
-    postOther: "#F97316",  // orange
-    current: "#10B981",    // green (active drawing)
+    preYou: "#3B82F6",
+    preOther: "#F59E0B",
+    postYou: "#6366F1",
+    postOther: "#F97316",
+    current: "#10B981",
   };
 
   return (
@@ -207,7 +226,7 @@ export function MapView({
       ))}
 
       {/* Current drawing path */}
-      {currentPath.length > 0 && (
+      {mapReady && currentPath.length > 0 && (
         <Polyline
           path={currentPath}
           options={{
@@ -230,7 +249,7 @@ export function MapView({
       )}
 
       {/* Current path point markers */}
-      {currentPath.map((point, i) => (
+      {mapReady && currentPath.map((point, i) => (
         <Marker
           key={`current-${i}`}
           position={point}
