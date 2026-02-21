@@ -132,6 +132,35 @@ export function isWithinThreshold(
   return calculateDistance(a, b) <= thresholdMeters;
 }
 
+/**
+ * Split a drawn path into pre-impact and post-impact at the closest point to impact
+ */
+export function splitPathAtImpact(
+  path: LatLng[],
+  impact: LatLng
+): { pre: LatLng[]; post: LatLng[] } {
+  if (path.length < 2) return { pre: path, post: [] };
+
+  let minDist = Infinity;
+  let closestIdx = 0;
+
+  for (let i = 0; i < path.length; i++) {
+    const dist = calculateDistance(path[i], impact);
+    if (dist < minDist) {
+      minDist = dist;
+      closestIdx = i;
+    }
+  }
+
+  // Split: pre = start to closest (snap end to impact), post = closest to end (snap start to impact)
+  const pre = [...path.slice(0, closestIdx + 1)];
+  pre[pre.length - 1] = impact;
+
+  const post = [impact, ...path.slice(closestIdx + 1)];
+
+  return { pre, post };
+}
+
 function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }

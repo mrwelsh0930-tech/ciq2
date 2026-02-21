@@ -9,6 +9,7 @@ import {
 } from "@react-google-maps/api";
 import { LatLng } from "@/types/reconstruction";
 import { simplifyPath } from "@/lib/simplify";
+import { calculateBearing } from "@/lib/geometry";
 
 const MAP_CONTAINER_STYLE = {
   width: "100%",
@@ -27,18 +28,20 @@ const IMPACT_PULSE_ICON = {
   strokeWeight: 3,
 };
 
+// Simple top-down car shape (pointing north by default)
+const CAR_SVG_PATH = "M -4,-8 L 4,-8 L 5,-5 L 5,6 L 4,8 L -4,8 L -5,6 L -5,-5 Z";
+
 export type MapMode =
   | "idle"
   | "place-impact"
-  | "draw-pre-path"
-  | "draw-post-path"
-  | "place-rest"
-  | "place-entity";
+  | "draw-path"
+  | "place-rest";
 
 interface MapViewProps {
   mode: MapMode;
   impactPoint: LatLng | null;
   currentPath: LatLng[];
+  currentPathColor?: string;
   completedPaths: {
     path: LatLng[];
     color: string;
@@ -54,6 +57,7 @@ export function MapView({
   mode,
   impactPoint,
   currentPath,
+  currentPathColor = "#10B981",
   completedPaths,
   otherEntityPosition,
   restPositions,
@@ -70,16 +74,14 @@ export function MapView({
 
   // Refs for stable access in event handlers
   const modeRef = useRef(mode);
-  const impactPointRef = useRef(impactPoint);
   const onMapClickRef = useRef(onMapClick);
   const onPathUpdateRef = useRef(onPathUpdate);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
-  useEffect(() => { impactPointRef.current = impactPoint; }, [impactPoint]);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
   useEffect(() => { onPathUpdateRef.current = onPathUpdate; }, [onPathUpdate]);
 
-  const isDrawMode = mode === "draw-pre-path" || mode === "draw-post-path";
+  const isDrawMode = mode === "draw-path";
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
@@ -129,7 +131,7 @@ export function MapView({
 
   // Drawing handlers
   const handleDrawStart = useCallback((clientX: number, clientY: number) => {
-    if (!modeRef.current.startsWith("draw-")) return;
+    if (modeRef.current !== "draw-path") return;
     isDrawingRef.current = true;
     const point = pixelToLatLng(clientX, clientY);
     if (point) {
@@ -151,19 +153,7 @@ export function MapView({
   const handleDrawEnd = useCallback(() => {
     if (!isDrawingRef.current) return;
     isDrawingRef.current = false;
-
     const simplified = simplifyPath(drawPointsRef.current, 0.00001);
-    const impact = impactPointRef.current;
-
-    // Snap end to impact for pre-path
-    if (impact && modeRef.current === "draw-pre-path" && simplified.length > 0) {
-      simplified[simplified.length - 1] = impact;
-    }
-    // Snap start to impact for post-path
-    if (impact && modeRef.current === "draw-post-path" && simplified.length > 0) {
-      simplified[0] = impact;
-    }
-
     onPathUpdateRef.current(simplified);
     drawPointsRef.current = [];
   }, []);
@@ -174,7 +164,7 @@ export function MapView({
     if (!overlay) return;
 
     const onTouchStart = (e: TouchEvent) => {
-      if (!modeRef.current.startsWith("draw-")) return;
+      if (modeRef.current !== "draw-path") return;
       e.preventDefault();
       handleDrawStart(e.touches[0].clientX, e.touches[0].clientY);
     };
@@ -188,7 +178,7 @@ export function MapView({
       handleDrawEnd();
     };
     const onMouseDown = (e: MouseEvent) => {
-      if (!modeRef.current.startsWith("draw-")) return;
+      if (modeRef.current !== "draw-path") return;
       handleDrawStart(e.clientX, e.clientY);
     };
     const onMouseMove = (e: MouseEvent) => {
@@ -227,12 +217,30 @@ export function MapView({
     (e: google.maps.MapMouseEvent) => {
       if (!e.latLng) return;
       const currentMode = modeRef.current;
-      if (currentMode === "place-impact" || currentMode === "place-rest" || currentMode === "place-entity") {
+      if (currentMode === "place-impact" || currentMode === "place-rest") {
         onMapClickRef.current({ lat: e.latLng.lat(), lng: e.latLng.lng() });
       }
     },
     []
   );
+
+  // Helper: get car icon for a path endpoint
+  const getCarIcon = (color: string, path: LatLng[]) => {
+    if (path.length < 2) return null;
+    const bearing = calculateBearing(
+      path[path.length - 2],
+      path[path.length - 1]
+    );
+    return {
+      path: CAR_SVG_PATH,
+      scale: 2,
+      fillColor: color,
+      fillOpacity: 0.95,
+      strokeColor: "#FFFFFF",
+      strokeWeight: 2,
+      rotation: bearing,
+    };
+  };
 
   if (loadError) {
     return (
@@ -254,10 +262,6 @@ export function MapView({
   }
 
   const center = userLocation || DEFAULT_CENTER;
-
-  const pathColors = {
-    current: "#10B981",
-  };
 
   return (
     <div className="relative w-full h-full">
@@ -285,7 +289,7 @@ export function MapView({
           />
         )}
 
-        {/* Completed paths */}
+        {/* Completed paths + car icons at endpoints */}
         {completedPaths.map((cp, i) => (
           <Polyline
             key={`completed-${i}`}
@@ -298,29 +302,44 @@ export function MapView({
             }}
           />
         ))}
+        {mapReady && completedPaths.map((cp, i) => {
+          const carIcon = getCarIcon(cp.color, cp.path);
+          if (!carIcon) return null;
+          return (
+            <Marker
+              key={`car-completed-${i}`}
+              position={cp.path[cp.path.length - 1]}
+              icon={carIcon}
+              zIndex={60}
+            />
+          );
+        })}
 
         {/* Current drawing path */}
         {mapReady && currentPath.length > 1 && (
           <Polyline
             path={currentPath}
             options={{
-              strokeColor: pathColors.current,
+              strokeColor: currentPathColor,
               strokeWeight: 5,
               strokeOpacity: 0.9,
               geodesic: true,
-              icons: [
-                {
-                  icon: {
-                    path: google.maps.SymbolPath.FORWARD_OPEN_ARROW,
-                    scale: 3,
-                    strokeColor: pathColors.current,
-                  },
-                  offset: "100%",
-                },
-              ],
             }}
           />
         )}
+
+        {/* Car icon at end of current path */}
+        {mapReady && currentPath.length > 1 && (() => {
+          const carIcon = getCarIcon(currentPathColor, currentPath);
+          if (!carIcon) return null;
+          return (
+            <Marker
+              position={currentPath[currentPath.length - 1]}
+              icon={carIcon}
+              zIndex={60}
+            />
+          );
+        })()}
 
         {/* Start marker for current path */}
         {mapReady && currentPath.length > 0 && (
@@ -329,7 +348,7 @@ export function MapView({
             icon={{
               path: google.maps.SymbolPath.CIRCLE,
               scale: 7,
-              fillColor: pathColors.current,
+              fillColor: currentPathColor,
               fillOpacity: 1,
               strokeColor: "#FFFFFF",
               strokeWeight: 2,

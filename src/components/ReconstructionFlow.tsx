@@ -15,11 +15,10 @@ import {
   calculateApproachAngle,
   classifyCollision,
   toPDOFClock,
-  calculateDistance,
+  splitPathAtImpact,
 } from "@/lib/geometry";
 import { MapView, MapMode } from "./MapView";
 import { StepIndicator } from "./StepIndicator";
-import { BottomBar } from "./BottomBar";
 import { CollisionTypeSelector } from "./CollisionTypeSelector";
 import { SpeedInput } from "./SpeedInput";
 import { Summary } from "./Summary";
@@ -41,6 +40,10 @@ const INITIAL_STATE: ReconstructionState = {
 
 const MIN_PATH_POINTS = 2;
 
+// Path colors per vehicle
+const YOUR_PATH_COLOR = "#3B82F6";
+const OTHER_PATH_COLOR = "#F59E0B";
+
 export function ReconstructionFlow() {
   const [state, setState] = useState<ReconstructionState>(INITIAL_STATE);
   const [currentPath, setCurrentPath] = useState<LatLng[]>([]);
@@ -49,10 +52,8 @@ export function ReconstructionFlow() {
 
   // Determine which steps to show based on collision type
   const activeSteps = STEPS.filter((step) => {
-    if (!isVehicle) {
-      // Skip "other approach" and "other movement after" for non-vehicle
-      if (step.id === 3 || step.id === 5) return false;
-    }
+    // Skip "other path" for non-vehicle collisions
+    if (!isVehicle && step.id === 4) return false;
     return true;
   });
 
@@ -63,53 +64,53 @@ export function ReconstructionFlow() {
   // Determine map mode
   const getMapMode = (): MapMode => {
     switch (state.currentStep) {
-      case 1:
-        return state.impactPoint ? "idle" : "place-impact";
       case 2:
+        return state.impactPoint ? "idle" : "place-impact";
       case 3:
-        return "draw-pre-path";
       case 4:
+        return "draw-path";
       case 5:
-        return "draw-post-path";
-      case 6:
         return "place-rest";
       default:
         return "idle";
     }
   };
 
-  // Build completed paths for rendering
+  // Build completed paths for rendering (combine pre+post into one line per vehicle)
   const getCompletedPaths = () => {
     const paths: { path: LatLng[]; color: string }[] = [];
 
-    if (state.yourVehicle.preImpactPath.length > 0) {
-      paths.push({ path: state.yourVehicle.preImpactPath, color: "#3B82F6" });
+    // Your vehicle
+    const yourPre = state.yourVehicle.preImpactPath;
+    const yourPost = state.yourVehicle.postImpactPath;
+    if (yourPre.length > 0 || yourPost.length > 0) {
+      let fullPath: LatLng[];
+      if (yourPre.length > 0 && yourPost.length > 1) {
+        fullPath = [...yourPre, ...yourPost.slice(1)];
+      } else if (yourPre.length > 0) {
+        fullPath = yourPre;
+      } else {
+        fullPath = yourPost;
+      }
+      paths.push({ path: fullPath, color: YOUR_PATH_COLOR });
     }
 
-    if (
-      isVehicle &&
-      "preImpactPath" in state.otherEntity &&
-      (state.otherEntity as VehicleData).preImpactPath.length > 0
-    ) {
-      paths.push({
-        path: (state.otherEntity as VehicleData).preImpactPath,
-        color: "#F59E0B",
-      });
-    }
-
-    if (state.yourVehicle.postImpactPath.length > 0) {
-      paths.push({ path: state.yourVehicle.postImpactPath, color: "#6366F1" });
-    }
-
-    if (
-      isVehicle &&
-      "postImpactPath" in state.otherEntity &&
-      (state.otherEntity as VehicleData).postImpactPath.length > 0
-    ) {
-      paths.push({
-        path: (state.otherEntity as VehicleData).postImpactPath,
-        color: "#F97316",
-      });
+    // Other vehicle
+    if (isVehicle && "preImpactPath" in state.otherEntity) {
+      const other = state.otherEntity as VehicleData;
+      const otherPre = other.preImpactPath;
+      const otherPost = other.postImpactPath;
+      if (otherPre.length > 0 || otherPost.length > 0) {
+        let fullPath: LatLng[];
+        if (otherPre.length > 0 && otherPost.length > 1) {
+          fullPath = [...otherPre, ...otherPost.slice(1)];
+        } else if (otherPre.length > 0) {
+          fullPath = otherPre;
+        } else {
+          fullPath = otherPost;
+        }
+        paths.push({ path: fullPath, color: OTHER_PATH_COLOR });
+      }
     }
 
     return paths;
@@ -131,6 +132,7 @@ export function ReconstructionFlow() {
             description: "",
           };
 
+    // Go to step 1 (speed/movement) instead of straight to map
     setState((prev) => ({
       ...prev,
       currentStep: 1,
@@ -139,12 +141,28 @@ export function ReconstructionFlow() {
     }));
   };
 
+  const handleSpeedComplete = (data: {
+    movementType: "forward" | "reverse" | "stopped";
+    speedEstimate: number | null;
+  }) => {
+    // Save speed data, advance to step 2 (impact point)
+    setState((prev) => ({
+      ...prev,
+      yourVehicle: {
+        ...prev.yourVehicle,
+        movementType: data.movementType,
+        speedEstimate: data.speedEstimate,
+      },
+      currentStep: 2,
+    }));
+  };
+
   const handleMapClick = useCallback(
     (latlng: LatLng) => {
-      if (state.currentStep === 1) {
+      if (state.currentStep === 2) {
         // Place impact point
         setState((prev) => ({ ...prev, impactPoint: latlng }));
-      } else if (state.currentStep === 6) {
+      } else if (state.currentStep === 5) {
         // Place rest position
         setState((prev) => ({
           ...prev,
@@ -159,23 +177,10 @@ export function ReconstructionFlow() {
     setCurrentPath(path);
   }, []);
 
-  const handleUndo = () => {
-    if (state.currentStep === 1 && state.impactPoint) {
-      setState((prev) => ({ ...prev, impactPoint: null }));
-    } else if (state.currentStep === 6) {
-      setState((prev) => ({
-        ...prev,
-        yourVehicle: { ...prev.yourVehicle, restPosition: null },
-      }));
-    } else if (currentPath.length > 0) {
-      setCurrentPath((prev) => prev.slice(0, -1));
-    }
-  };
-
   const handleReset = () => {
-    if (state.currentStep === 1) {
+    if (state.currentStep === 2) {
       setState((prev) => ({ ...prev, impactPoint: null }));
-    } else if (state.currentStep === 6) {
+    } else if (state.currentStep === 5) {
       setState((prev) => ({
         ...prev,
         yourVehicle: { ...prev.yourVehicle, restPosition: null },
@@ -222,53 +227,23 @@ export function ReconstructionFlow() {
 
   const goToNextStep = () => {
     const currentId = state.currentStep;
-
-    // Save current path data
     let updatedState = { ...state };
 
-    if (currentId === 2) {
-      // Save your pre-impact path
-      const pathToSave =
-        currentPath.length > 0 &&
-        state.impactPoint &&
-        calculateDistance(
-          currentPath[currentPath.length - 1],
-          state.impactPoint
-        ) > 5
-          ? [...currentPath, state.impactPoint] // Auto-extend to impact
-          : currentPath;
-
+    if (currentId === 3 && currentPath.length >= 2 && state.impactPoint) {
+      // Save your vehicle path — split at impact
+      const { pre, post } = splitPathAtImpact(currentPath, state.impactPoint);
       updatedState.yourVehicle = {
         ...updatedState.yourVehicle,
-        preImpactPath: pathToSave,
+        preImpactPath: pre,
+        postImpactPath: post,
       };
-    } else if (currentId === 3 && isVehicle) {
-      // Save other vehicle pre-impact path
-      const pathToSave =
-        currentPath.length > 0 &&
-        state.impactPoint &&
-        calculateDistance(
-          currentPath[currentPath.length - 1],
-          state.impactPoint
-        ) > 5
-          ? [...currentPath, state.impactPoint]
-          : currentPath;
-
+    } else if (currentId === 4 && isVehicle && currentPath.length >= 2 && state.impactPoint) {
+      // Save other vehicle path — split at impact
+      const { pre, post } = splitPathAtImpact(currentPath, state.impactPoint);
       updatedState.otherEntity = {
         ...(updatedState.otherEntity as VehicleData),
-        preImpactPath: pathToSave,
-      };
-    } else if (currentId === 4) {
-      // Save your post-impact path
-      updatedState.yourVehicle = {
-        ...updatedState.yourVehicle,
-        postImpactPath: currentPath,
-      };
-    } else if (currentId === 5 && isVehicle) {
-      // Save other vehicle post-impact path
-      updatedState.otherEntity = {
-        ...(updatedState.otherEntity as VehicleData),
-        postImpactPath: currentPath,
+        preImpactPath: pre,
+        postImpactPath: post,
       };
     }
 
@@ -282,14 +257,7 @@ export function ReconstructionFlow() {
     }
 
     setState(updatedState);
-    setCurrentPath(
-      // Pre-populate post-impact paths starting from impact
-      nextActiveStep &&
-        (nextActiveStep.id === 4 || nextActiveStep.id === 5) &&
-        state.impactPoint
-        ? [state.impactPoint]
-        : []
-    );
+    setCurrentPath([]);
   };
 
   const canProceed = (): boolean => {
@@ -297,42 +265,23 @@ export function ReconstructionFlow() {
       case 0:
         return false; // Handled by CollisionTypeSelector
       case 1:
-        return state.impactPoint !== null;
-      case 2:
-      case 3:
-        return currentPath.length >= MIN_PATH_POINTS;
-      case 4:
-      case 5:
-        return currentPath.length >= MIN_PATH_POINTS;
-      case 6:
-        return state.yourVehicle.restPosition !== null;
-      case 7:
         return false; // Handled by SpeedInput
+      case 2:
+        return state.impactPoint !== null;
+      case 3:
+      case 4:
+        return currentPath.length >= MIN_PATH_POINTS;
+      case 5:
+        return state.yourVehicle.restPosition !== null;
       default:
         return false;
     }
   };
 
   const canUndo = (): boolean => {
-    if (state.currentStep === 1) return state.impactPoint !== null;
-    if (state.currentStep === 6) return state.yourVehicle.restPosition !== null;
+    if (state.currentStep === 2) return state.impactPoint !== null;
+    if (state.currentStep === 5) return state.yourVehicle.restPosition !== null;
     return currentPath.length > 0;
-  };
-
-  const handleSpeedComplete = (data: {
-    movementType: "forward" | "reverse" | "stopped";
-    speedEstimate: number | null;
-  }) => {
-    const updated = computeDerived({
-      ...state,
-      yourVehicle: {
-        ...state.yourVehicle,
-        movementType: data.movementType,
-        speedEstimate: data.speedEstimate,
-      },
-      currentStep: 8,
-    });
-    setState(updated);
   };
 
   const handleStartOver = () => {
@@ -343,74 +292,76 @@ export function ReconstructionFlow() {
   // Get instruction text for current step
   const getInstruction = (): string => {
     switch (state.currentStep) {
-      case 1:
-        return state.impactPoint
-          ? "Impact point set. Tap again to move it, or continue."
-          : "Tap on the map where the vehicles made contact.";
       case 2:
-        return "Tap points along your path before the crash. End near the collision point.";
+        return state.impactPoint
+          ? "Tap to move the impact point, or continue."
+          : "Tap where the collision happened.";
       case 3:
-        return "Tap points along the other vehicle's path before the crash.";
+        return "Draw your path — start where you came from, go through the red dot, end where you went.";
       case 4:
-        return "Tap points showing where your vehicle went after the crash.";
+        return "Now draw the other vehicle's path through the red dot.";
       case 5:
-        return "Tap points showing where the other vehicle went after.";
-      case 6:
         return "Tap where your vehicle came to a stop.";
       default:
         return "";
     }
   };
 
+  // Get the current draw color based on step
+  const getCurrentPathColor = (): string => {
+    if (state.currentStep === 4) return OTHER_PATH_COLOR;
+    return YOUR_PATH_COLOR;
+  };
+
   // Step 0: Collision type selection
   if (state.currentStep === 0) {
     return (
       <div className="fixed inset-0 flex flex-col bg-gray-50">
+        <div className="flex-1 overflow-y-auto">
+          <CollisionTypeSelector onSelect={handleCollisionTypeSelect} />
+        </div>
         <StepIndicator
           currentStep={0}
           totalSteps={activeSteps.length}
         />
-        <div className="flex-1 overflow-y-auto">
-          <CollisionTypeSelector onSelect={handleCollisionTypeSelect} />
-        </div>
       </div>
     );
   }
 
-  // Step 7: Speed input
-  if (state.currentStep === 7) {
+  // Step 1: Speed/movement input (BEFORE map)
+  if (state.currentStep === 1) {
     return (
       <div className="fixed inset-0 flex flex-col bg-gray-50">
-        <StepIndicator
-          currentStep={currentStepIndex}
-          totalSteps={activeSteps.length}
-        />
         <div className="flex-1 overflow-y-auto">
           <SpeedInput
             vehicleLabel="your vehicle"
             onComplete={handleSpeedComplete}
           />
         </div>
-       </div>
-    );
-  }
-
-  // Step 8: Summary
-  if (state.currentStep === 8) {
-    return (
-      <div className="fixed inset-0 flex flex-col bg-gray-50">
         <StepIndicator
           currentStep={currentStepIndex}
           totalSteps={activeSteps.length}
         />
-        <div className="flex-1 overflow-y-auto">
-          <Summary state={state} onStartOver={handleStartOver} />
-        </div>
       </div>
     );
   }
 
-  // Map-based steps (1-6)
+  // Step 6: Summary
+  if (state.currentStep === 6) {
+    return (
+      <div className="fixed inset-0 flex flex-col bg-gray-50">
+        <div className="flex-1 overflow-y-auto">
+          <Summary state={state} onStartOver={handleStartOver} />
+        </div>
+        <StepIndicator
+          currentStep={currentStepIndex}
+          totalSteps={activeSteps.length}
+        />
+      </div>
+    );
+  }
+
+  // Map-based steps (2-5)
   const otherEntityPos =
     !isVehicle && "position" in state.otherEntity
       ? (state.otherEntity as OtherEntityData).position
@@ -424,37 +375,55 @@ export function ReconstructionFlow() {
   ];
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-gray-50">
-      <StepIndicator
-        currentStep={currentStepIndex}
-        totalSteps={activeSteps.length}
-      />
+    <div className="fixed inset-0 flex flex-col bg-gray-100">
+      {/* Fixed header — won't crop */}
+      <div className="shrink-0 bg-white px-4 pt-3 pb-2 safe-top border-b border-gray-200">
+        <h2 className="text-lg font-bold text-gray-900 text-center">
+          {activeSteps[currentStepIndex]?.title}
+        </h2>
+        <p className="text-xs text-gray-500 text-center mt-0.5">
+          {getInstruction()}
+        </p>
+      </div>
 
-      {/* Map */}
+      {/* Map fills remaining space */}
       <div className="flex-1 relative">
         <MapView
           mode={getMapMode()}
           impactPoint={state.impactPoint}
           currentPath={currentPath}
+          currentPathColor={getCurrentPathColor()}
           completedPaths={getCompletedPaths()}
           otherEntityPosition={otherEntityPos}
           restPositions={restPositions}
           onMapClick={handleMapClick}
           onPathUpdate={handlePathUpdate}
         />
+
+        {/* Undo button overlaid on map */}
+        {canUndo() && (
+          <button
+            onClick={handleReset}
+            className="absolute bottom-4 left-4 z-20 px-4 py-2 bg-white/90 backdrop-blur rounded-full shadow-lg text-sm font-medium text-gray-700 active:bg-gray-100"
+          >
+            Redo
+          </button>
+        )}
       </div>
 
-      {/* Bottom controls */}
-      <BottomBar
-        onNext={goToNextStep}
-        onUndo={handleUndo}
-        onReset={handleReset}
-        canNext={canProceed()}
-        canUndo={canUndo()}
-        nextLabel={
-          state.currentStep === 7 ? "Continue to speed" : "Continue"
-        }
-        instruction={getInstruction()}
+      {/* Bottom: Continue button + progress */}
+      <div className="shrink-0 bg-white border-t border-gray-200 px-4 py-3">
+        <button
+          onClick={goToNextStep}
+          disabled={!canProceed()}
+          className="w-full py-3 text-base font-semibold text-white bg-blue-600 rounded-xl disabled:bg-blue-300 disabled:cursor-not-allowed active:bg-blue-700 transition-colors"
+        >
+          Continue
+        </button>
+      </div>
+      <StepIndicator
+        currentStep={currentStepIndex}
+        totalSteps={activeSteps.length}
       />
     </div>
   );
