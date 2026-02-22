@@ -6,15 +6,18 @@ interface StepIndicatorProps {
 }
 
 export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
+  const progress = ((currentStep + 1) / totalSteps) * 100;
+
   return (
-    <div className="shrink-0 bg-white px-4 py-3 safe-bottom">
-      <div className="w-full bg-gray-200 rounded-full h-2">
+    <div className="shrink-0 flex flex-col gap-4 items-center py-4 safe-bottom">
+      {/* Progress bar: 304px wide, 10px tall, rounded-full */}
+      <div className="w-[304px] h-[10px] bg-[#CBD5E1] rounded-full overflow-hidden">
         <div
-          className="bg-gray-800 h-2 rounded-full transition-all duration-500"
-          style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
+          className="h-full bg-[#475569] rounded-full transition-all duration-500"
+          style={{ width: `${progress}%` }}
         />
       </div>
-      <p className="text-center text-xs text-gray-400 mt-2">
+      <p className="text-center text-[12px] text-[#475569] font-normal">
         Powered by Assured
       </p>
     </div>

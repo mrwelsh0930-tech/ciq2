@@ -31,6 +31,9 @@ const IMPACT_PULSE_ICON = {
 // Simple top-down car shape (pointing north by default)
 const CAR_SVG_PATH = "M -4,-8 L 4,-8 L 5,-5 L 5,6 L 4,8 L -4,8 L -5,6 L -5,-5 Z";
 
+// Must be a stable reference — shared with AddressInput
+const LIBRARIES: ("places")[] = ["places"];
+
 export type MapMode =
   | "idle"
   | "place-impact"
@@ -52,6 +55,7 @@ interface MapViewProps {
   onPathUpdate: (path: LatLng[]) => void;
   onDrawEnd?: () => void;
   vehicleLabels?: string[];
+  centerOverride?: LatLng | null;
 }
 
 export function MapView({
@@ -66,10 +70,10 @@ export function MapView({
   onPathUpdate,
   onDrawEnd,
   vehicleLabels = ["You", "Other"],
+  centerOverride,
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
-  const [userLocation, setUserLocation] = useState<LatLng | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const isDrawingRef = useRef(false);
   const drawPointsRef = useRef<LatLng[]>([]);
@@ -89,22 +93,9 @@ export function MapView({
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+    libraries: LIBRARIES,
   });
 
-  // Get user location on mount
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-        },
-        () => {}
-      );
-    }
-  }, []);
 
   const onMapLoad = useCallback((map: google.maps.Map) => {
     mapRef.current = map;
@@ -268,7 +259,7 @@ export function MapView({
     );
   }
 
-  const center = userLocation || DEFAULT_CENTER;
+  const center = centerOverride || DEFAULT_CENTER;
 
   return (
     <div className="relative w-full h-full">
@@ -281,7 +272,7 @@ export function MapView({
         options={{
           disableDefaultUI: true,
           zoomControl: true,
-          mapTypeId: "satellite",
+          mapTypeId: "roadmap",
           gestureHandling: "greedy",
           clickableIcons: false,
         }}

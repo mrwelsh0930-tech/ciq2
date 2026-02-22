@@ -50,10 +50,13 @@ export function calculateApproachAngle(
  * Classify collision type based on approach angle
  */
 export function classifyCollision(approachAngle: number): string {
-  if (approachAngle <= 30 || approachAngle >= 150) return "Rear-end";
-  if (approachAngle >= 60 && approachAngle <= 120) return "T-bone";
+  if (approachAngle <= 30) return "Rear-End";
+  if (approachAngle >= 150) return "Head-On";
+  if (approachAngle >= 60 && approachAngle <= 120) return "T-Bone";
   return "Sideswipe";
 }
+
+export const COLLISION_TYPE_OPTIONS = ["T-Bone", "Rear-End", "Head-On", "Sideswipe"];
 
 /**
  * Convert approach angle to PDOF clock approximation

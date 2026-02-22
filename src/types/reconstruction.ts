@@ -16,6 +16,7 @@ export interface VehicleData {
   headingChange: number | null;
   speedEstimate: number | null;
   movementType: "forward" | "reverse" | "stopped" | null;
+  speedTrend: "accelerating" | "decelerating" | "constant" | "unknown" | null;
 }
 
 export interface OtherEntityData {
@@ -37,6 +38,9 @@ export interface ReconstructionState {
   collisionEntityType: CollisionEntityType | null;
   impactPoint: LatLng | null;
   mapBearingAtImpact: number | null;
+  incidentAddress: string | null;
+  incidentLocation: LatLng | null;
+  collisionTypeOverride: string | null;
   yourVehicle: VehicleData;
   otherEntity: VehicleData | OtherEntityData;
   derived: DerivedData;
@@ -53,15 +57,18 @@ export const INITIAL_VEHICLE_DATA: VehicleData = {
   headingChange: null,
   speedEstimate: null,
   movementType: null,
+  speedTrend: null,
 };
 
 export const STEPS = [
-  { id: 0, title: "What happened?", description: "Tell us what you collided with" },
-  { id: 1, title: "Before the crash", description: "How were you moving?" },
-  { id: 2, title: "Drawing tool", description: "How this works" },
-  { id: 3, title: "Collision point", description: "Tap where the collision happened" },
-  { id: 4, title: "Your path", description: "Draw your vehicle's path" },
-  { id: 5, title: "Other path", description: "Draw the other vehicle's path" },
-  { id: 6, title: "Rest position", description: "Where did your vehicle end up?" },
-  { id: 7, title: "Summary", description: "Review your reconstruction" },
+  { id: 0, title: "Incident location", description: "Where did the incident happen?" },
+  { id: 1, title: "What happened?", description: "Tell us what you collided with" },
+  { id: 2, title: "Before the collision", description: "How were you moving?" },
+  { id: 3, title: "Speed change", description: "Were you speeding up or slowing down?" },
+  { id: 4, title: "Drawing tool", description: "How this works" },
+  { id: 5, title: "Collision point", description: "Please confirm the collision point" },
+  { id: 6, title: "Your path", description: "Draw your vehicle's path" },
+  { id: 7, title: "Other path", description: "Draw the other vehicle's path" },
+  { id: 8, title: "Rest position", description: "Where did your vehicle end up?" },
+  { id: 9, title: "Summary", description: "Review your reconstruction" },
 ];

@@ -26,42 +26,42 @@ export function SpeedInput({ vehicleLabel, onComplete }: SpeedInputProps) {
   };
 
   return (
-    <div className="flex flex-col items-center py-2">
-      <h2 className="text-2xl font-bold text-gray-900 mb-2 text-center">
+    <div className="flex flex-col items-center w-full">
+      <h2 className="font-medium text-[18px] leading-[28px] tracking-[-0.26px] text-[#475569] text-center mb-[10px]">
         How was {vehicleLabel} moving?
       </h2>
-      <p className="text-gray-500 mb-8 text-center">
-        Just before the crash happened.
+      <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569] text-center mb-8">
+        Just before the collision.
       </p>
 
       {/* Movement type */}
-      <div className="w-full max-w-sm space-y-3 mb-8">
+      <div className="w-full space-y-3 mb-8">
         {(
           [
-            { value: "forward", label: "Driving forward", icon: "➡️" },
-            { value: "reverse", label: "Reversing", icon: "⬅️" },
-            { value: "stopped", label: "Stopped / Parked", icon: "🅿️" },
+            { value: "forward", label: "Driving forward", icon: "\u27A1\uFE0F" },
+            { value: "reverse", label: "Reversing", icon: "\u2B05\uFE0F" },
+            { value: "stopped", label: "Stopped / Parked", icon: "\uD83C\uDD7F\uFE0F" },
           ] as const
         ).map((option) => (
           <button
             key={option.value}
             onClick={() => setMovementType(option.value)}
-            className={`w-full flex items-center gap-4 p-4 border-2 rounded-xl transition-all text-left ${
+            className={`w-full flex items-center gap-4 p-4 border rounded-[8px] transition-all text-left ${
               movementType === option.value
-                ? "border-blue-500 bg-blue-50"
-                : "border-gray-200 bg-white hover:border-gray-300"
+                ? "border-[#1660F4] bg-[#F1F5F9]"
+                : "border-[#D4D4D4] bg-white hover:border-[#94A3B8]"
             }`}
           >
             <span className="text-2xl">{option.icon}</span>
-            <p className="font-medium text-gray-900">{option.label}</p>
+            <p className="font-medium text-[14px] leading-[20px] text-[#475569]">{option.label}</p>
           </button>
         ))}
       </div>
 
       {/* Speed input (only if moving) */}
       {movementType && movementType !== "stopped" && (
-        <div className="w-full max-w-sm mb-8">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="w-full mb-8">
+          <label className="block font-medium text-[14px] leading-[20px] text-[#475569] mb-2">
             Estimated speed (mph)
           </label>
           <div className="flex items-center gap-3">
@@ -75,19 +75,19 @@ export function SpeedInput({ vehicleLabel, onComplete }: SpeedInputProps) {
               }}
               disabled={dontKnow}
               placeholder="e.g. 25"
-              className="flex-1 p-3 border-2 border-gray-200 rounded-xl text-lg text-center focus:border-blue-500 focus:outline-none disabled:bg-gray-100 disabled:text-gray-400"
+              className="flex-1 h-[55px] px-4 border border-[#D4D4D4] rounded-[8px] text-[16px] text-[#475569] text-center focus:border-[#1660F4] focus:outline-none disabled:bg-[#F1F5F9] disabled:text-[#94A3B8]"
             />
-            <span className="text-gray-500 font-medium">mph</span>
+            <span className="text-[#94A3B8] font-medium">mph</span>
           </div>
           <button
             onClick={() => {
               setDontKnow(!dontKnow);
               if (!dontKnow) setSpeed("");
             }}
-            className={`mt-3 w-full p-3 rounded-xl border-2 text-sm font-medium transition-all ${
+            className={`mt-3 w-full h-[48px] rounded-[8px] border text-[14px] font-medium transition-all ${
               dontKnow
-                ? "border-blue-500 bg-blue-50 text-blue-700"
-                : "border-gray-200 text-gray-500 hover:border-gray-300"
+                ? "border-[#1660F4] bg-[#F1F5F9] text-[#1660F4]"
+                : "border-[#D4D4D4] text-[#94A3B8] hover:border-[#94A3B8]"
             }`}
           >
             I&apos;m not sure
@@ -99,7 +99,7 @@ export function SpeedInput({ vehicleLabel, onComplete }: SpeedInputProps) {
       {movementType && (
         <button
           onClick={handleContinue}
-          className="w-full max-w-sm py-3 text-base font-semibold text-white bg-blue-600 rounded-xl active:bg-blue-700 transition-colors"
+          className="w-full h-[55px] bg-[#1660F4] rounded-[8px] text-white text-[16px] font-normal leading-[24px] active:bg-[#1250D4] transition-colors"
         >
           Continue
         </button>
