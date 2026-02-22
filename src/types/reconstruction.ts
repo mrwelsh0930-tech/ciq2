@@ -21,6 +21,7 @@ export interface VehicleData {
 
 export interface OtherEntityData {
   type: CollisionEntityType;
+  entitySubType: string | null;
   label: string;
   position: LatLng | null;
   description: string;
@@ -41,6 +42,7 @@ export interface ReconstructionState {
   incidentAddress: string | null;
   incidentLocation: LatLng | null;
   collisionTypeOverride: string | null;
+  isParkingArea: boolean | null;
   yourVehicle: VehicleData;
   otherEntity: VehicleData | OtherEntityData;
   derived: DerivedData;
@@ -65,10 +67,11 @@ export const STEPS = [
   { id: 1, title: "What happened?", description: "Tell us what you collided with" },
   { id: 2, title: "Before the collision", description: "How were you moving?" },
   { id: 3, title: "Speed change", description: "Were you speeding up or slowing down?" },
-  { id: 4, title: "Drawing tool", description: "How this works" },
-  { id: 5, title: "Collision point", description: "Please confirm the collision point" },
-  { id: 6, title: "Your path", description: "Draw your vehicle's path" },
-  { id: 7, title: "Other path", description: "Draw the other vehicle's path" },
-  { id: 8, title: "Rest position", description: "Where did your vehicle end up?" },
-  { id: 9, title: "Summary", description: "Review your reconstruction" },
+  { id: 4, title: "Parking area", description: "Was this in a parking area?" },
+  { id: 5, title: "Drawing tool", description: "How this works" },
+  { id: 6, title: "Collision point", description: "Please confirm the collision point" },
+  { id: 7, title: "Your path", description: "Draw your vehicle's path" },
+  { id: 8, title: "Other path", description: "Draw the other vehicle's path" },
+  { id: 9, title: "Rest position", description: "Where did your vehicle end up?" },
+  { id: 10, title: "Summary", description: "Review your reconstruction" },
 ];

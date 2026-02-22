@@ -6,6 +6,7 @@ import {
   useJsApiLoader,
   Marker,
   Polyline,
+  OverlayView,
 } from "@react-google-maps/api";
 import { LatLng } from "@/types/reconstruction";
 import { simplifyPath } from "@/lib/simplify";
@@ -56,6 +57,8 @@ interface MapViewProps {
   onDrawEnd?: () => void;
   vehicleLabels?: string[];
   centerOverride?: LatLng | null;
+  useSatellite?: boolean;
+  entitySticker?: string | null;
 }
 
 export function MapView({
@@ -71,6 +74,8 @@ export function MapView({
   onDrawEnd,
   vehicleLabels = ["You", "Other"],
   centerOverride,
+  useSatellite = false,
+  entitySticker,
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -272,19 +277,32 @@ export function MapView({
         options={{
           disableDefaultUI: true,
           zoomControl: true,
-          mapTypeId: "roadmap",
+          mapTypeId: useSatellite ? "satellite" : "roadmap",
           gestureHandling: "greedy",
           clickableIcons: false,
         }}
       >
-        {/* Impact point */}
-        {impactPoint && (
+        {/* Impact point — red circle (only when no entity sticker) */}
+        {impactPoint && !entitySticker && (
           <Marker
             position={impactPoint}
             icon={IMPACT_PULSE_ICON}
             title="Impact point"
             zIndex={100}
           />
+        )}
+
+        {/* Entity sticker at impact point (replaces red circle for non-vehicle) */}
+        {impactPoint && entitySticker && (
+          <OverlayView
+            position={impactPoint}
+            mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+            getPixelPositionOffset={() => ({ x: -22, y: -22 })}
+          >
+            <div className="flex items-center justify-center w-11 h-11 bg-white rounded-full shadow-lg text-[28px] select-none pointer-events-none border-2 border-white">
+              {entitySticker}
+            </div>
+          </OverlayView>
         )}
 
         {/* Completed paths + car icons at endpoints */}

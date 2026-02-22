@@ -34,6 +34,7 @@ const INITIAL_STATE: ReconstructionState = {
   incidentAddress: null,
   incidentLocation: null,
   collisionTypeOverride: null,
+  isParkingArea: null,
   yourVehicle: { ...INITIAL_VEHICLE_DATA, id: "you", label: "Your vehicle" },
   otherEntity: { ...INITIAL_VEHICLE_DATA, id: "other", label: "Other vehicle" },
   derived: {
@@ -53,6 +54,37 @@ const OTHER_PATH_COLOR = "#F59E0B";
 // Figma design tokens
 const CARD_SHADOW = "0px 1px 3px rgba(0,0,0,0.1), 0px 1px 2px rgba(0,0,0,0.06)";
 
+// Entity sticker mapping for non-vehicle collisions
+function getEntitySticker(type: CollisionEntityType | null, subType: string | null): string | null {
+  if (!type || type === "vehicle") return null;
+  if (type === "animal") {
+    switch (subType) {
+      case "deer": return "\uD83E\uDD8C";
+      case "dog": return "\uD83D\uDC15";
+      case "duck": return "\uD83E\uDD86";
+      default: return "\uD83E\uDD8C"; // other → deer
+    }
+  }
+  if (type === "object") {
+    switch (subType) {
+      case "pole": return "\uD83E\uDEA7";
+      case "guardrail": return "\uD83D\uDEA7";
+      case "fence": return "\uD83D\uDEA7";
+      case "tree": return "\uD83C\uDF32";
+      default: return "\uD83C\uDF32"; // other → tree
+    }
+  }
+  if (type === "property") {
+    switch (subType) {
+      case "building": return "\uD83C\uDFE2";
+      case "wall": return "\uD83E\uDDF1";
+      case "mailbox": return "\uD83D\uDCEB";
+      default: return "\uD83D\uDCEB"; // other → mailbox
+    }
+  }
+  return null;
+}
+
 export function ReconstructionFlow() {
   const [state, setState] = useState<ReconstructionState>(INITIAL_STATE);
   const [currentPath, setCurrentPath] = useState<LatLng[]>([]);
@@ -61,10 +93,16 @@ export function ReconstructionFlow() {
   const isVehicle = state.collisionEntityType === "vehicle";
   const isStopped = state.yourVehicle.movementType === "stopped";
 
+  // Entity sticker for non-vehicle collisions
+  const entitySubType = !isVehicle && state.otherEntity && "entitySubType" in state.otherEntity
+    ? (state.otherEntity as OtherEntityData).entitySubType
+    : null;
+  const entitySticker = getEntitySticker(state.collisionEntityType, entitySubType);
+
   // Determine which steps to show based on collision type and movement
   const activeSteps = STEPS.filter((step) => {
     // Skip "other path" for non-vehicle collisions
-    if (!isVehicle && step.id === 7) return false;
+    if (!isVehicle && step.id === 8) return false;
     // Skip acceleration step if vehicle was stopped
     if (isStopped && step.id === 3) return false;
     return true;
@@ -86,16 +124,16 @@ export function ReconstructionFlow() {
 
   // Determine map mode
   const getMapMode = (): MapMode => {
-    if (drawComplete && (state.currentStep === 6 || state.currentStep === 7)) {
+    if (drawComplete && (state.currentStep === 7 || state.currentStep === 8)) {
       return "idle";
     }
     switch (state.currentStep) {
-      case 5:
-        return state.impactPoint ? "idle" : "place-impact";
       case 6:
+        return state.impactPoint ? "idle" : "place-impact";
       case 7:
-        return "draw-path";
       case 8:
+        return "draw-path";
+      case 9:
         return "place-rest";
       default:
         return "idle";
@@ -150,13 +188,14 @@ export function ReconstructionFlow() {
     }));
   };
 
-  // Step 1: Collision type → Step 2: Speed
-  const handleCollisionTypeSelect = (type: CollisionEntityType) => {
+  // Step 1: Collision type (with sub-type) → Step 2: Speed
+  const handleCollisionTypeSelect = (type: CollisionEntityType, subType: string | null) => {
     const otherEntity: VehicleData | OtherEntityData =
       type === "vehicle"
         ? { ...INITIAL_VEHICLE_DATA, id: "other", label: "Other vehicle" }
         : {
             type,
+            entitySubType: subType,
             label:
               type === "animal"
                 ? "Animal"
@@ -175,7 +214,7 @@ export function ReconstructionFlow() {
     }));
   };
 
-  // Step 2: Speed → Step 3 (acceleration) or Step 4 (instruction) if stopped
+  // Step 2: Speed → Step 3 (acceleration) or Step 4 (parking) if stopped
   const handleSpeedComplete = (data: {
     movementType: "forward" | "reverse" | "stopped";
     speedEstimate: number | null;
@@ -191,7 +230,7 @@ export function ReconstructionFlow() {
     }));
   };
 
-  // Step 3: Acceleration → Step 4: Instruction
+  // Step 3: Acceleration → Step 4: Parking area
   const handleAccelerationComplete = (trend: "accelerating" | "decelerating" | "constant" | "unknown") => {
     setState((prev) => ({
       ...prev,
@@ -203,11 +242,20 @@ export function ReconstructionFlow() {
     }));
   };
 
+  // Step 4: Parking area → Step 5: Instruction
+  const handleParkingArea = (isParkingArea: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      isParkingArea,
+      currentStep: 5,
+    }));
+  };
+
   const handleMapClick = useCallback(
     (latlng: LatLng) => {
-      if (state.currentStep === 5) {
+      if (state.currentStep === 6) {
         setState((prev) => ({ ...prev, impactPoint: latlng }));
-      } else if (state.currentStep === 8) {
+      } else if (state.currentStep === 9) {
         setState((prev) => ({
           ...prev,
           yourVehicle: { ...prev.yourVehicle, restPosition: latlng },
@@ -275,14 +323,14 @@ export function ReconstructionFlow() {
     const currentId = state.currentStep;
     let updatedState = { ...state };
 
-    if (currentId === 6 && currentPath.length >= 2 && state.impactPoint) {
+    if (currentId === 7 && currentPath.length >= 2 && state.impactPoint) {
       const { pre, post } = splitPathAtImpact(currentPath, state.impactPoint);
       updatedState.yourVehicle = {
         ...updatedState.yourVehicle,
         preImpactPath: pre,
         postImpactPath: post,
       };
-    } else if (currentId === 7 && isVehicle && currentPath.length >= 2 && state.impactPoint) {
+    } else if (currentId === 8 && isVehicle && currentPath.length >= 2 && state.impactPoint) {
       const { pre, post } = splitPathAtImpact(currentPath, state.impactPoint);
       updatedState.otherEntity = {
         ...(updatedState.otherEntity as VehicleData),
@@ -309,13 +357,14 @@ export function ReconstructionFlow() {
       case 1:
       case 2:
       case 3:
+      case 4:
         return false; // These steps have their own handlers
-      case 5:
-        return state.impactPoint !== null;
       case 6:
+        return state.impactPoint !== null;
       case 7:
-        return currentPath.length >= MIN_PATH_POINTS;
       case 8:
+        return currentPath.length >= MIN_PATH_POINTS;
+      case 9:
         return state.yourVehicle.restPosition !== null;
       default:
         return false;
@@ -329,26 +378,26 @@ export function ReconstructionFlow() {
   };
 
   const getCurrentPathColor = (): string => {
-    if (state.currentStep === 7) return OTHER_PATH_COLOR;
+    if (state.currentStep === 8) return OTHER_PATH_COLOR;
     return YOUR_PATH_COLOR;
   };
 
   const getMapInstruction = (): string => {
     switch (state.currentStep) {
-      case 5:
+      case 6:
         return state.impactPoint
           ? "Tap to reposition, or confirm below."
           : "Please confirm the collision point";
-      case 6:
+      case 7:
         return drawComplete
           ? "Does this look like the path driven by your vehicle?"
           : "Draw the path driven by your vehicle, leading up to and after the collision.";
-      case 7:
+      case 8:
         return drawComplete
           ? "Does this look like the path driven by the other vehicle?"
           : "Draw the path driven by the other vehicle, leading up to and after the collision.";
-      case 8:
-        return "Tap where your vehicle came to a stop.";
+      case 9:
+        return "Tap where your vehicle came to rest.";
       default:
         return "";
     }
@@ -356,12 +405,12 @@ export function ReconstructionFlow() {
 
   const getMapSubInstruction = (): string | null => {
     switch (state.currentStep) {
-      case 5:
+      case 6:
         return state.impactPoint
           ? null
           : "Drag the map to reposition the pin. It\u2019s okay if it\u2019s not exact \u2014 just place it as close as you remember";
-      case 6:
       case 7:
+      case 8:
         return drawComplete ? null : "Make sure the path touches the collision point";
       default:
         return null;
@@ -442,7 +491,7 @@ export function ReconstructionFlow() {
     );
   }
 
-  // ─── Step 1: Collision type ───
+  // ─── Step 1: Collision type (with inline sub-type) ───
   if (state.currentStep === 1) {
     return (
       <PageShell>
@@ -484,8 +533,44 @@ export function ReconstructionFlow() {
     );
   }
 
-  // ─── Step 4: Pre-draw instruction ───
+  // ─── Step 4: Parking area ───
   if (state.currentStep === 4) {
+    return (
+      <PageShell>
+        <div className="flex-1 flex flex-col items-center justify-center py-6 overflow-y-auto">
+          <Card className="py-8 px-8 flex flex-col gap-8 items-center">
+            <div className="flex flex-col items-center w-full">
+              <h2 className="font-medium text-[18px] leading-[28px] tracking-[-0.26px] text-[#475569] text-center mb-[10px]">
+                Did the collision occur in a parking lot or parking area?
+              </h2>
+              <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569] text-center mb-8">
+                This helps us show you the best map view.
+              </p>
+              <div className="w-full space-y-3">
+                <button
+                  onClick={() => handleParkingArea(true)}
+                  className="w-full flex items-center gap-4 p-4 border border-[#D4D4D4] rounded-[8px] hover:border-[#1660F4] hover:bg-[#F1F5F9] active:bg-[#E2E8F0] transition-all text-left"
+                >
+                  <span className="text-2xl">{"\uD83C\uDD7F\uFE0F"}</span>
+                  <p className="font-medium text-[14px] leading-[20px] text-[#475569]">Yes, parking area</p>
+                </button>
+                <button
+                  onClick={() => handleParkingArea(false)}
+                  className="w-full flex items-center gap-4 p-4 border border-[#D4D4D4] rounded-[8px] hover:border-[#1660F4] hover:bg-[#F1F5F9] active:bg-[#E2E8F0] transition-all text-left"
+                >
+                  <span className="text-2xl">{"\uD83D\uDEE3\uFE0F"}</span>
+                  <p className="font-medium text-[14px] leading-[20px] text-[#475569]">No, not a parking area</p>
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </PageShell>
+    );
+  }
+
+  // ─── Step 5: Pre-draw instruction ───
+  if (state.currentStep === 5) {
     return (
       <PageShell>
         <div className="flex-1 flex flex-col items-center justify-center py-6 overflow-y-auto">
@@ -495,7 +580,7 @@ export function ReconstructionFlow() {
                 Now we&apos;ll use a simple drawing tool to show what happened.
               </p>
               <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569]">
-                Draw each vehicle&apos;s full path with your finger, leading up to and after the collision.
+                On the next screen, you&apos;ll use your finger to draw {isVehicle ? "each vehicle\u2019s" : "your vehicle\u2019s"} path, leading up to and after the collision.
               </p>
             </div>
 
@@ -519,8 +604,8 @@ export function ReconstructionFlow() {
     );
   }
 
-  // ─── Step 9: Summary ───
-  if (state.currentStep === 9) {
+  // ─── Step 10: Summary ───
+  if (state.currentStep === 10) {
     return (
       <PageShell>
         <div className="flex-1 overflow-y-auto flex flex-col items-center py-6">
@@ -536,7 +621,7 @@ export function ReconstructionFlow() {
     );
   }
 
-  // ─── Map-based steps (5-8) ───
+  // ─── Map-based steps (6-9) ───
   const otherEntityPos =
     !isVehicle && "position" in state.otherEntity
       ? (state.otherEntity as OtherEntityData).position
@@ -549,7 +634,7 @@ export function ReconstructionFlow() {
       : null,
   ];
 
-  const isDrawStep = state.currentStep === 6 || state.currentStep === 7;
+  const isDrawStep = state.currentStep === 7 || state.currentStep === 8;
   const showConfirmation = isDrawStep && drawComplete && currentPath.length >= MIN_PATH_POINTS;
   const subInstruction = getMapSubInstruction();
 
@@ -589,18 +674,20 @@ export function ReconstructionFlow() {
               onPathUpdate={handlePathUpdate}
               onDrawEnd={handleDrawEnd}
               centerOverride={state.incidentLocation}
+              useSatellite={state.isParkingArea === true}
+              entitySticker={entitySticker}
             />
 
             {/* Vehicle label pills */}
-            {(hasYourPath || (isDrawStep && state.currentStep === 7 && currentPath.length > 0) || hasOtherPath) && (
+            {(hasYourPath || (isDrawStep && state.currentStep === 8 && currentPath.length > 0) || hasOtherPath) && (
               <div className="absolute bottom-3 left-3 z-20 space-y-1.5">
-                {(hasYourPath || (state.currentStep === 6 && currentPath.length > 0)) && (
+                {(hasYourPath || (state.currentStep === 7 && currentPath.length > 0)) && (
                   <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: YOUR_PATH_COLOR }} />
                     <span className="text-xs font-medium text-[#475569]">Your vehicle</span>
                   </div>
                 )}
-                {(hasOtherPath || (state.currentStep === 7 && currentPath.length > 0)) && (
+                {(hasOtherPath || (state.currentStep === 8 && currentPath.length > 0)) && (
                   <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: OTHER_PATH_COLOR }} />
                     <span className="text-xs font-medium text-[#475569]">Other vehicle</span>
@@ -614,7 +701,7 @@ export function ReconstructionFlow() {
           {!isDrawStep && (
             <div className="shrink-0 px-6 py-4">
               <PrimaryButton onClick={goToNextStep} disabled={!canProceed()}>
-                {state.currentStep === 5 ? "Confirm collision point" : "Continue"}
+                {state.currentStep === 6 ? "Confirm collision point" : "Continue"}
               </PrimaryButton>
             </div>
           )}
