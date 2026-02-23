@@ -69,7 +69,7 @@ function getEntitySticker(type: CollisionEntityType | null, subType: string | nu
     switch (subType) {
       case "pole": return "\uD83E\uDEA7";
       case "guardrail": return "\uD83D\uDEA7";
-      case "fence": return "\uD83E\uDEB5";
+      case "fence": return "\uD83D\uDEA7";
       case "tree": return "\uD83C\uDF32";
       default: return "\uD83C\uDF32"; // other → tree
     }
@@ -659,110 +659,34 @@ export function ReconstructionFlow() {
       </div>
     ) : null;
 
-  // ─── Fullscreen map layout ───
-  if (isFullscreen) {
-    return (
-      <div className="fixed inset-0 flex flex-col bg-black">
-        <div className="flex-1 relative min-h-0">
-          <MapView
-            mode={getMapMode()}
-            impactPoint={state.impactPoint}
-            currentPath={currentPath}
-            currentPathColor={getCurrentPathColor()}
-            completedPaths={getCompletedPaths()}
-            otherEntityPosition={otherEntityPos}
-            restPositions={restPositions}
-            onMapClick={handleMapClick}
-            onPathUpdate={handlePathUpdate}
-            onDrawEnd={handleDrawEnd}
-            centerOverride={state.incidentLocation}
-            useSatellite={state.isParkingArea === true}
-            entitySticker={entitySticker}
-          />
+  return (
+    <div className="fixed inset-0 flex flex-col bg-[#E2E8F0]">
+      {!isFullscreen && <AssuredHeader onBack={goBack} />}
 
-          {/* Floating instruction at top */}
-          <div className="absolute top-3 left-3 right-14 z-20 pointer-events-none">
-            <div className="bg-white/95 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg text-center">
-              <p className="font-medium text-[15px] leading-[22px] text-[#475569]">
+      {/* Card wrapping instruction + map (Figma pattern) */}
+      <div className={`flex-1 ${isFullscreen ? "flex flex-col" : "flex flex-col items-center py-6"} min-h-0`}>
+        <div
+          className={isFullscreen
+            ? "flex flex-col flex-1 min-h-0"
+            : "bg-white w-[342px] rounded-[6px] overflow-hidden flex flex-col flex-1 min-h-0"
+          }
+          style={isFullscreen ? undefined : { boxShadow: CARD_SHADOW }}
+        >
+          {/* Instruction text — inline in normal, floating overlay in fullscreen */}
+          {!isFullscreen && (
+            <div className="px-8 py-6 text-center shrink-0">
+              <p className="font-medium text-[18px] leading-[28px] tracking-[-0.26px] text-[#475569]">
                 {getMapInstruction()}
               </p>
               {subInstruction && (
-                <p className="font-normal text-[13px] leading-[18px] text-[#94A3B8] mt-1">
+                <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569] mt-[10px]">
                   {subInstruction}
                 </p>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Collapse button */}
-          <button
-            onClick={() => setIsFullscreen(false)}
-            className="absolute top-3 right-3 z-30 w-10 h-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg flex items-center justify-center active:bg-[#F1F5F9]"
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M7 2v5H2M11 16v-5h5" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-
-          {/* Vehicle label pills */}
-          {vehicleLabelPills("bottom-20")}
-
-          {/* Floating CTA at bottom */}
-          <div className="absolute bottom-4 left-3 right-3 z-20">
-            {showConfirmation ? (
-              <div className="flex gap-3">
-                <button
-                  onClick={handleRedraw}
-                  className="flex-1 h-[50px] bg-white/95 backdrop-blur-sm border border-[#D4D4D4] rounded-[8px] text-[15px] font-medium text-[#475569] shadow-lg active:bg-[#F1F5F9]"
-                >
-                  Redraw
-                </button>
-                <button
-                  onClick={goToNextStep}
-                  className="flex-1 h-[50px] bg-[#1660F4] rounded-[8px] text-[15px] font-medium text-white shadow-lg active:bg-[#1250D4]"
-                >
-                  Confirm
-                </button>
-              </div>
-            ) : !isDrawStep ? (
-              <button
-                onClick={goToNextStep}
-                disabled={!canProceed()}
-                className="w-full h-[50px] bg-[#1660F4] rounded-[8px] text-white text-[15px] font-medium shadow-lg active:bg-[#1250D4] disabled:bg-[#94A3B8] transition-colors"
-              >
-                {state.currentStep === 6 ? "Confirm collision point" : "Continue"}
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ─── Normal map layout ───
-  return (
-    <div className="fixed inset-0 flex flex-col bg-[#E2E8F0]">
-      <AssuredHeader onBack={goBack} />
-
-      {/* Card wrapping instruction + map (Figma pattern) */}
-      <div className="flex-1 flex flex-col items-center py-6 min-h-0">
-        <div
-          className="bg-white w-[342px] rounded-[6px] overflow-hidden flex flex-col flex-1 min-h-0"
-          style={{ boxShadow: CARD_SHADOW }}
-        >
-          {/* Instruction text */}
-          <div className="px-8 py-6 text-center shrink-0">
-            <p className="font-medium text-[18px] leading-[28px] tracking-[-0.26px] text-[#475569]">
-              {getMapInstruction()}
-            </p>
-            {subInstruction && (
-              <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569] mt-[10px]">
-                {subInstruction}
-              </p>
-            )}
-          </div>
-
-          {/* Map fills remaining card space */}
+          {/* Map container — same tree position in both modes */}
           <div className="flex-1 relative min-h-0">
             <MapView
               mode={getMapMode()}
@@ -780,22 +704,82 @@ export function ReconstructionFlow() {
               entitySticker={entitySticker}
             />
 
-            {/* Fullscreen expand button */}
-            <button
-              onClick={() => setIsFullscreen(true)}
-              className="absolute top-3 right-3 z-20 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-lg shadow-md flex items-center justify-center active:bg-[#F1F5F9]"
-            >
-              <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-                <path d="M11 2h5v5M7 16H2v-5" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+            {/* Fullscreen: floating instruction at top */}
+            {isFullscreen && (
+              <div className="absolute top-3 left-3 right-14 z-20 pointer-events-none">
+                <div className="bg-white/95 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg text-center">
+                  <p className="font-medium text-[15px] leading-[22px] text-[#475569]">
+                    {getMapInstruction()}
+                  </p>
+                  {subInstruction && (
+                    <p className="font-normal text-[13px] leading-[18px] text-[#94A3B8] mt-1">
+                      {subInstruction}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Fullscreen: collapse button */}
+            {isFullscreen && (
+              <button
+                onClick={() => setIsFullscreen(false)}
+                className="absolute top-3 right-3 z-[200] w-10 h-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg flex items-center justify-center active:bg-[#F1F5F9]"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <path d="M7 2v5H2M11 16v-5h5" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            )}
+
+            {/* Fullscreen: floating CTA at bottom */}
+            {isFullscreen && (
+              <div className="absolute bottom-4 left-3 right-3 z-20">
+                {showConfirmation ? (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleRedraw}
+                      className="flex-1 h-[50px] bg-white/95 backdrop-blur-sm border border-[#D4D4D4] rounded-[8px] text-[15px] font-medium text-[#475569] shadow-lg active:bg-[#F1F5F9]"
+                    >
+                      Redraw
+                    </button>
+                    <button
+                      onClick={goToNextStep}
+                      className="flex-1 h-[50px] bg-[#1660F4] rounded-[8px] text-[15px] font-medium text-white shadow-lg active:bg-[#1250D4]"
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                ) : !isDrawStep ? (
+                  <button
+                    onClick={goToNextStep}
+                    disabled={!canProceed()}
+                    className="w-full h-[50px] bg-[#1660F4] rounded-[8px] text-white text-[15px] font-medium shadow-lg active:bg-[#1250D4] disabled:bg-[#94A3B8] transition-colors"
+                  >
+                    {state.currentStep === 6 ? "Confirm collision point" : "Continue"}
+                  </button>
+                ) : null}
+              </div>
+            )}
+
+            {/* Normal: expand button */}
+            {!isFullscreen && (
+              <button
+                onClick={() => setIsFullscreen(true)}
+                className="absolute top-3 right-3 z-[200] w-9 h-9 bg-white/90 backdrop-blur-sm rounded-lg shadow-md flex items-center justify-center active:bg-[#F1F5F9]"
+              >
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+                  <path d="M11 2h5v5M7 16H2v-5" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            )}
 
             {/* Vehicle label pills */}
-            {vehicleLabelPills("bottom-3")}
+            {vehicleLabelPills(isFullscreen ? "bottom-20" : "bottom-3")}
           </div>
 
-          {/* CTA button inside card for non-draw map steps */}
-          {!isDrawStep && (
+          {/* CTA button inside card for non-draw, non-fullscreen map steps */}
+          {!isFullscreen && !isDrawStep && (
             <div className="shrink-0 px-6 py-4">
               <PrimaryButton onClick={goToNextStep} disabled={!canProceed()}>
                 {state.currentStep === 6 ? "Confirm collision point" : "Continue"}
@@ -804,8 +788,8 @@ export function ReconstructionFlow() {
           )}
         </div>
 
-        {/* Redraw/Confirm outside card for draw steps */}
-        {showConfirmation && (
+        {/* Redraw/Confirm outside card for draw steps (non-fullscreen) */}
+        {!isFullscreen && showConfirmation && (
           <div className="w-[342px] mt-4 flex gap-3">
             <button
               onClick={handleRedraw}
@@ -823,18 +807,20 @@ export function ReconstructionFlow() {
           </div>
         )}
 
-        {/* Spacer for draw steps before confirmation */}
-        {isDrawStep && !showConfirmation && (
+        {/* Spacer for draw steps before confirmation (non-fullscreen) */}
+        {!isFullscreen && isDrawStep && !showConfirmation && (
           <div className="w-[342px] mt-4 opacity-0 pointer-events-none">
             <div className="h-[55px]" />
           </div>
         )}
       </div>
 
-      <StepIndicator
-        currentStep={currentStepIndex}
-        totalSteps={activeSteps.length}
-      />
+      {!isFullscreen && (
+        <StepIndicator
+          currentStep={currentStepIndex}
+          totalSteps={activeSteps.length}
+        />
+      )}
     </div>
   );
 }

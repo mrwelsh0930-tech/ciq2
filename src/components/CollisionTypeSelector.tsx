@@ -24,7 +24,7 @@ const SUB_TYPE_OPTIONS: Record<string, { value: string; label: string; icon: str
   object: [
     { value: "pole", label: "Pole", icon: "\uD83E\uDEA7" },
     { value: "guardrail", label: "Guardrail", icon: "\uD83D\uDEA7" },
-    { value: "fence", label: "Fence", icon: "\uD83E\uDEB5" },
+    { value: "fence", label: "Fence", icon: "\uD83D\uDEA7" },
     { value: "tree", label: "Tree", icon: "\uD83C\uDF32" },
     { value: "other", label: "Other object", icon: "\uD83D\uDCE6" },
   ],
