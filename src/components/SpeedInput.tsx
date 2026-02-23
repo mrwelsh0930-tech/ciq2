@@ -40,7 +40,7 @@ export function SpeedInput({ vehicleLabel, onComplete }: SpeedInputProps) {
           [
             { value: "forward", label: "Driving forward", icon: "\u27A1\uFE0F" },
             { value: "reverse", label: "Reversing", icon: "\u2B05\uFE0F" },
-            { value: "stopped", label: "Stopped / Parked", icon: "\uD83C\uDD7F\uFE0F" },
+            { value: "stopped", label: "Stopped", icon: "\uD83D\uDED1" },
           ] as const
         ).map((option) => (
           <button

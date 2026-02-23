@@ -69,7 +69,7 @@ function getEntitySticker(type: CollisionEntityType | null, subType: string | nu
     switch (subType) {
       case "pole": return "\uD83E\uDEA7";
       case "guardrail": return "\uD83D\uDEA7";
-      case "fence": return "\uD83D\uDEA7";
+      case "fence": return "\uD83E\uDEB5";
       case "tree": return "\uD83C\uDF32";
       default: return "\uD83C\uDF32"; // other → tree
     }
@@ -89,6 +89,7 @@ export function ReconstructionFlow() {
   const [state, setState] = useState<ReconstructionState>(INITIAL_STATE);
   const [currentPath, setCurrentPath] = useState<LatLng[]>([]);
   const [drawComplete, setDrawComplete] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const isVehicle = state.collisionEntityType === "vehicle";
   const isStopped = state.yourVehicle.movementType === "stopped";
@@ -375,6 +376,7 @@ export function ReconstructionFlow() {
     setState(INITIAL_STATE);
     setCurrentPath([]);
     setDrawComplete(false);
+    setIsFullscreen(false);
   };
 
   const getCurrentPathColor = (): string => {
@@ -638,6 +640,106 @@ export function ReconstructionFlow() {
   const showConfirmation = isDrawStep && drawComplete && currentPath.length >= MIN_PATH_POINTS;
   const subInstruction = getMapSubInstruction();
 
+  // Shared vehicle label pills
+  const vehicleLabelPills = (bottomClass: string) =>
+    (hasYourPath || (isDrawStep && state.currentStep === 8 && currentPath.length > 0) || hasOtherPath) ? (
+      <div className={`absolute ${bottomClass} left-3 z-20 space-y-1.5`}>
+        {(hasYourPath || (state.currentStep === 7 && currentPath.length > 0)) && (
+          <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: YOUR_PATH_COLOR }} />
+            <span className="text-xs font-medium text-[#475569]">Your vehicle</span>
+          </div>
+        )}
+        {(hasOtherPath || (state.currentStep === 8 && currentPath.length > 0)) && (
+          <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: OTHER_PATH_COLOR }} />
+            <span className="text-xs font-medium text-[#475569]">Other vehicle</span>
+          </div>
+        )}
+      </div>
+    ) : null;
+
+  // ─── Fullscreen map layout ───
+  if (isFullscreen) {
+    return (
+      <div className="fixed inset-0 flex flex-col bg-black">
+        <div className="flex-1 relative min-h-0">
+          <MapView
+            mode={getMapMode()}
+            impactPoint={state.impactPoint}
+            currentPath={currentPath}
+            currentPathColor={getCurrentPathColor()}
+            completedPaths={getCompletedPaths()}
+            otherEntityPosition={otherEntityPos}
+            restPositions={restPositions}
+            onMapClick={handleMapClick}
+            onPathUpdate={handlePathUpdate}
+            onDrawEnd={handleDrawEnd}
+            centerOverride={state.incidentLocation}
+            useSatellite={state.isParkingArea === true}
+            entitySticker={entitySticker}
+          />
+
+          {/* Floating instruction at top */}
+          <div className="absolute top-3 left-3 right-14 z-20 pointer-events-none">
+            <div className="bg-white/95 backdrop-blur-sm rounded-lg px-4 py-3 shadow-lg text-center">
+              <p className="font-medium text-[15px] leading-[22px] text-[#475569]">
+                {getMapInstruction()}
+              </p>
+              {subInstruction && (
+                <p className="font-normal text-[13px] leading-[18px] text-[#94A3B8] mt-1">
+                  {subInstruction}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Collapse button */}
+          <button
+            onClick={() => setIsFullscreen(false)}
+            className="absolute top-3 right-3 z-30 w-10 h-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg flex items-center justify-center active:bg-[#F1F5F9]"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M7 2v5H2M11 16v-5h5" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+
+          {/* Vehicle label pills */}
+          {vehicleLabelPills("bottom-20")}
+
+          {/* Floating CTA at bottom */}
+          <div className="absolute bottom-4 left-3 right-3 z-20">
+            {showConfirmation ? (
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRedraw}
+                  className="flex-1 h-[50px] bg-white/95 backdrop-blur-sm border border-[#D4D4D4] rounded-[8px] text-[15px] font-medium text-[#475569] shadow-lg active:bg-[#F1F5F9]"
+                >
+                  Redraw
+                </button>
+                <button
+                  onClick={goToNextStep}
+                  className="flex-1 h-[50px] bg-[#1660F4] rounded-[8px] text-[15px] font-medium text-white shadow-lg active:bg-[#1250D4]"
+                >
+                  Confirm
+                </button>
+              </div>
+            ) : !isDrawStep ? (
+              <button
+                onClick={goToNextStep}
+                disabled={!canProceed()}
+                className="w-full h-[50px] bg-[#1660F4] rounded-[8px] text-white text-[15px] font-medium shadow-lg active:bg-[#1250D4] disabled:bg-[#94A3B8] transition-colors"
+              >
+                {state.currentStep === 6 ? "Confirm collision point" : "Continue"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Normal map layout ───
   return (
     <div className="fixed inset-0 flex flex-col bg-[#E2E8F0]">
       <AssuredHeader onBack={goBack} />
@@ -678,23 +780,18 @@ export function ReconstructionFlow() {
               entitySticker={entitySticker}
             />
 
+            {/* Fullscreen expand button */}
+            <button
+              onClick={() => setIsFullscreen(true)}
+              className="absolute top-3 right-3 z-20 w-9 h-9 bg-white/90 backdrop-blur-sm rounded-lg shadow-md flex items-center justify-center active:bg-[#F1F5F9]"
+            >
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+                <path d="M11 2h5v5M7 16H2v-5" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
             {/* Vehicle label pills */}
-            {(hasYourPath || (isDrawStep && state.currentStep === 8 && currentPath.length > 0) || hasOtherPath) && (
-              <div className="absolute bottom-3 left-3 z-20 space-y-1.5">
-                {(hasYourPath || (state.currentStep === 7 && currentPath.length > 0)) && (
-                  <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: YOUR_PATH_COLOR }} />
-                    <span className="text-xs font-medium text-[#475569]">Your vehicle</span>
-                  </div>
-                )}
-                {(hasOtherPath || (state.currentStep === 8 && currentPath.length > 0)) && (
-                  <div className="flex items-center gap-2 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: OTHER_PATH_COLOR }} />
-                    <span className="text-xs font-medium text-[#475569]">Other vehicle</span>
-                  </div>
-                )}
-              </div>
-            )}
+            {vehicleLabelPills("bottom-3")}
           </div>
 
           {/* CTA button inside card for non-draw map steps */}

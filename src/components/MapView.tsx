@@ -6,7 +6,6 @@ import {
   useJsApiLoader,
   Marker,
   Polyline,
-  OverlayView,
 } from "@react-google-maps/api";
 import { LatLng } from "@/types/reconstruction";
 import { simplifyPath } from "@/lib/simplify";
@@ -276,7 +275,7 @@ export function MapView({
         onClick={handleMapClick}
         options={{
           disableDefaultUI: true,
-          zoomControl: true,
+          zoomControl: false,
           mapTypeId: useSatellite ? "satellite" : "roadmap",
           gestureHandling: "greedy",
           clickableIcons: false,
@@ -292,17 +291,25 @@ export function MapView({
           />
         )}
 
-        {/* Entity sticker at impact point (replaces red circle for non-vehicle) */}
-        {impactPoint && entitySticker && (
-          <OverlayView
+        {/* Entity sticker at impact point (native Marker for precision) */}
+        {impactPoint && entitySticker && mapReady && (
+          <Marker
             position={impactPoint}
-            mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-            getPixelPositionOffset={() => ({ x: -22, y: -22 })}
-          >
-            <div className="flex items-center justify-center w-11 h-11 bg-white rounded-full shadow-lg text-[28px] select-none pointer-events-none border-2 border-white">
-              {entitySticker}
-            </div>
-          </OverlayView>
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 18,
+              fillColor: "#FFFFFF",
+              fillOpacity: 1,
+              strokeColor: "#E2E8F0",
+              strokeWeight: 2,
+            }}
+            label={{
+              text: entitySticker,
+              fontSize: "22px",
+            }}
+            title="Collision object"
+            zIndex={100}
+          />
         )}
 
         {/* Completed paths + car icons at endpoints */}
@@ -418,6 +425,28 @@ export function MapView({
         className={`absolute inset-0 ${isDrawMode ? "z-10" : "-z-10 pointer-events-none"}`}
         style={{ touchAction: "none" }}
       />
+
+      {/* Custom zoom controls — above drawing overlay */}
+      <div className="absolute right-3 bottom-3 z-30 flex flex-col gap-1">
+        <button
+          onClick={() => {
+            const map = mapRef.current;
+            if (map) map.setZoom((map.getZoom() || 18) + 1);
+          }}
+          className="w-10 h-10 bg-white rounded shadow-md flex items-center justify-center text-xl font-bold text-[#666] active:bg-[#F1F5F9]"
+        >
+          +
+        </button>
+        <button
+          onClick={() => {
+            const map = mapRef.current;
+            if (map) map.setZoom((map.getZoom() || 18) - 1);
+          }}
+          className="w-10 h-10 bg-white rounded shadow-md flex items-center justify-center text-xl font-bold text-[#666] active:bg-[#F1F5F9]"
+        >
+          &minus;
+        </button>
+      </div>
     </div>
   );
 }

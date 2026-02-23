@@ -40,7 +40,7 @@ export function AddressInput({ onConfirm }: AddressInputProps) {
         return;
       }
       autocompleteServiceRef.current.getPlacePredictions(
-        { input, types: ["address"] },
+        { input, types: ["geocode", "establishment"] },
         (results) => {
           setPredictions(results || []);
         }
@@ -71,7 +71,7 @@ export function AddressInput({ onConfirm }: AddressInputProps) {
         Where did the incident happen?
       </h2>
       <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569] text-center mb-8">
-        Enter the address or intersection where the collision occurred.
+        Enter an address, intersection, or place of interest like a store or restaurant.
       </p>
 
       <div className="w-full relative">
@@ -79,7 +79,7 @@ export function AddressInput({ onConfirm }: AddressInputProps) {
           type="text"
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder="e.g. 123 Main St, City, State"
+          placeholder="e.g. 123 Main St or Walmart on Oak Ave"
           className="w-full h-[55px] px-4 border border-[#D4D4D4] rounded-[8px] text-[16px] text-[#475569] placeholder:text-[#94A3B8] focus:border-[#1660F4] focus:outline-none transition-colors"
         />
 
