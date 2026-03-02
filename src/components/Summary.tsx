@@ -72,7 +72,7 @@ export function Summary({ state, onStartOver, onCollisionTypeOverride }: Summary
           </svg>
         </div>
         <h2 className="font-medium text-[18px] leading-[28px] tracking-[-0.26px] text-[#475569]">All done</h2>
-        <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#94A3B8] mt-1">Here&apos;s what you told us.</p>
+        <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#94A3B8] mt-1">Here&apos;s your approximate reconstruction.</p>
       </div>
 
       <div className="w-full space-y-3">
@@ -221,7 +221,7 @@ export function Summary({ state, onStartOver, onCollisionTypeOverride }: Summary
         {/* Confirmation */}
         <div className="bg-[#F1F5F9] rounded-[8px] p-4 text-center">
           <p className="text-[14px] text-[#475569]">
-            Your reconstruction has been saved. An adjuster will review the details.
+            This is an approximate sketch based on your memory. Our team will review and verify the details.
           </p>
         </div>
 

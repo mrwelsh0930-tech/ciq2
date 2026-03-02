@@ -21,11 +21,8 @@ export function AccelerationInput({ onComplete }: AccelerationInputProps) {
   return (
     <div className="flex flex-col items-center w-full">
       <h2 className="font-medium text-[18px] leading-[28px] tracking-[-0.26px] text-[#475569] text-center mb-[10px]">
-        Leading up to the collision, were you...
+        Right before impact, were you changing speeds?
       </h2>
-      <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569] text-center mb-8">
-        Were you changing speed before the collision?
-      </p>
 
       <div className="w-full space-y-3 mb-8">
         {OPTIONS.map((option) => (

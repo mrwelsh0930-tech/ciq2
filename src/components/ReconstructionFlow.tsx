@@ -91,6 +91,8 @@ export function ReconstructionFlow() {
   const [drawComplete, setDrawComplete] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const useCarCursor = true;
+
   const isVehicle = state.collisionEntityType === "vehicle";
   const isStopped = state.yourVehicle.movementType === "stopped";
 
@@ -266,6 +268,13 @@ export function ReconstructionFlow() {
     [state.currentStep]
   );
 
+  const handleImpactDrag = useCallback(
+    (latlng: LatLng) => {
+      setState((prev) => ({ ...prev, impactPoint: latlng }));
+    },
+    []
+  );
+
   const handlePathUpdate = useCallback((path: LatLng[]) => {
     setCurrentPath(path);
   }, []);
@@ -276,6 +285,11 @@ export function ReconstructionFlow() {
 
   const handleRedraw = () => {
     setCurrentPath([]);
+    setDrawComplete(false);
+  };
+
+  const handleAdjust = () => {
+    // Re-enter draw mode but keep currentPath — MapView will use it as basePath
     setDrawComplete(false);
   };
 
@@ -347,6 +361,17 @@ export function ReconstructionFlow() {
       updatedState.currentStep = nextActiveStep.id;
     }
 
+    // Auto-populate rest position from path endpoint
+    if (nextActiveStep && nextActiveStep.id === 9) {
+      const postPath = updatedState.yourVehicle.postImpactPath;
+      if (postPath.length > 0) {
+        updatedState.yourVehicle = {
+          ...updatedState.yourVehicle,
+          restPosition: postPath[postPath.length - 1],
+        };
+      }
+    }
+
     setState(updatedState);
     setCurrentPath([]);
     setDrawComplete(false);
@@ -388,18 +413,20 @@ export function ReconstructionFlow() {
     switch (state.currentStep) {
       case 6:
         return state.impactPoint
-          ? "Tap to reposition, or confirm below."
-          : "Please confirm the collision point";
+          ? "Drag the pin to adjust, or confirm below."
+          : "Tap to place the collision point.";
       case 7:
         return drawComplete
           ? "Does this look like the path driven by your vehicle?"
-          : "Draw the path driven by your vehicle, leading up to and after the collision.";
+          : "Draw the path your vehicle traveled — just your best recollection.";
       case 8:
         return drawComplete
           ? "Does this look like the path driven by the other vehicle?"
-          : "Draw the path driven by the other vehicle, leading up to and after the collision.";
+          : "Draw the path the other vehicle traveled — just your best recollection.";
       case 9:
-        return "Tap where your vehicle came to rest.";
+        return state.yourVehicle.restPosition
+          ? "We placed your vehicle where your path ended. Tap to adjust."
+          : "Tap where your vehicle came to rest.";
       default:
         return "";
     }
@@ -414,6 +441,10 @@ export function ReconstructionFlow() {
       case 7:
       case 8:
         return drawComplete ? null : "Make sure the path touches the collision point";
+      case 9:
+        return state.yourVehicle.restPosition
+          ? "If your vehicle came to rest somewhere else, tap that spot instead."
+          : null;
       default:
         return null;
     }
@@ -584,6 +615,9 @@ export function ReconstructionFlow() {
               <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#475569]">
                 On the next screen, you&apos;ll use your finger to draw {isVehicle ? "each vehicle\u2019s" : "your vehicle\u2019s"} path, leading up to and after the collision.
               </p>
+              <p className="font-normal text-[14px] leading-[20px] tracking-[-0.09px] text-[#94A3B8] mt-2">
+                This is just a rough sketch — it doesn&apos;t need to be exact.
+              </p>
             </div>
 
             {/* Illustration */}
@@ -699,9 +733,13 @@ export function ReconstructionFlow() {
               onMapClick={handleMapClick}
               onPathUpdate={handlePathUpdate}
               onDrawEnd={handleDrawEnd}
+              onImpactDrag={handleImpactDrag}
               centerOverride={state.incidentLocation}
+              panToPoint={isDrawStep ? state.impactPoint : null}
+              basePath={isDrawStep && !drawComplete && currentPath.length > 0 ? currentPath : []}
               useSatellite={state.isParkingArea === true}
               entitySticker={entitySticker}
+              useCarCursor={useCarCursor}
             />
 
             {/* Fullscreen: floating instruction at top */}
@@ -736,16 +774,24 @@ export function ReconstructionFlow() {
             {isFullscreen && (
               <div className="absolute bottom-4 left-3 right-3 z-20">
                 {showConfirmation ? (
-                  <div className="flex gap-3">
-                    <button
-                      onClick={handleRedraw}
-                      className="flex-1 h-[50px] bg-white/95 backdrop-blur-sm border border-[#D4D4D4] rounded-[8px] text-[15px] font-medium text-[#475569] shadow-lg active:bg-[#F1F5F9]"
-                    >
-                      Redraw
-                    </button>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handleRedraw}
+                        className="flex-1 h-[44px] bg-white/95 backdrop-blur-sm border border-[#D4D4D4] rounded-[8px] text-[14px] font-medium text-[#475569] shadow-lg active:bg-[#F1F5F9]"
+                      >
+                        Redraw
+                      </button>
+                      <button
+                        onClick={handleAdjust}
+                        className="flex-1 h-[44px] bg-white/95 backdrop-blur-sm border border-[#D4D4D4] rounded-[8px] text-[14px] font-medium text-[#475569] shadow-lg active:bg-[#F1F5F9]"
+                      >
+                        Adjust
+                      </button>
+                    </div>
                     <button
                       onClick={goToNextStep}
-                      className="flex-1 h-[50px] bg-[#1660F4] rounded-[8px] text-[15px] font-medium text-white shadow-lg active:bg-[#1250D4]"
+                      className="w-full h-[50px] bg-[#1660F4] rounded-[8px] text-[15px] font-medium text-white shadow-lg active:bg-[#1250D4]"
                     >
                       Confirm
                     </button>
@@ -788,19 +834,28 @@ export function ReconstructionFlow() {
           )}
         </div>
 
-        {/* Redraw/Confirm outside card for draw steps (non-fullscreen) */}
+        {/* Redraw/Adjust/Confirm outside card for draw steps (non-fullscreen) */}
         {!isFullscreen && showConfirmation && (
-          <div className="w-[342px] mt-4 flex gap-3">
-            <button
-              onClick={handleRedraw}
-              className="flex-1 h-[55px] bg-white border border-[#D4D4D4] rounded-[8px] text-[16px] font-normal text-[#475569] active:bg-[#F1F5F9] transition-colors"
-              style={{ boxShadow: CARD_SHADOW }}
-            >
-              Redraw
-            </button>
+          <div className="w-[342px] mt-4 flex flex-col gap-3">
+            <div className="flex gap-3">
+              <button
+                onClick={handleRedraw}
+                className="flex-1 h-[48px] bg-white border border-[#D4D4D4] rounded-[8px] text-[15px] font-normal text-[#475569] active:bg-[#F1F5F9] transition-colors"
+                style={{ boxShadow: CARD_SHADOW }}
+              >
+                Redraw
+              </button>
+              <button
+                onClick={handleAdjust}
+                className="flex-1 h-[48px] bg-white border border-[#D4D4D4] rounded-[8px] text-[15px] font-normal text-[#475569] active:bg-[#F1F5F9] transition-colors"
+                style={{ boxShadow: CARD_SHADOW }}
+              >
+                Adjust
+              </button>
+            </div>
             <button
               onClick={goToNextStep}
-              className="flex-1 h-[55px] bg-[#1660F4] rounded-[8px] text-[16px] font-normal text-white active:bg-[#1250D4] transition-colors"
+              className="w-full h-[55px] bg-[#1660F4] rounded-[8px] text-[16px] font-normal text-white active:bg-[#1250D4] transition-colors"
             >
               Confirm
             </button>

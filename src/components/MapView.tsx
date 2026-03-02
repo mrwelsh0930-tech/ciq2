@@ -16,6 +16,10 @@ const MAP_CONTAINER_STYLE = {
   height: "100%",
 };
 
+// Top-down car cursor as base64 SVG (~24x24, hotspot at center)
+// Base64-encoded to avoid CSS url() quote-parsing issues
+const CAR_CURSOR = `url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDMyIDMyIiBmaWxsPSJub25lIj48cmVjdCB4PSI5IiB5PSIyIiB3aWR0aD0iMTQiIGhlaWdodD0iMjgiIHJ4PSI0IiBmaWxsPSIjM0I4MkY2IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiLz48cmVjdCB4PSIxMSIgeT0iNSIgd2lkdGg9IjEwIiBoZWlnaHQ9IjYiIHJ4PSIxLjUiIGZpbGw9IiM5M0M1RkQiLz48Y2lyY2xlIGN4PSIxMiIgY3k9IjI1IiByPSIyIiBmaWxsPSIjMUUzQTVGIi8+PGNpcmNsZSBjeD0iMjAiIGN5PSIyNSIgcj0iMiIgZmlsbD0iIzFFM0E1RiIvPjwvc3ZnPg==") 16 16, crosshair`;
+
 const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 };
 const DEFAULT_ZOOM = 18;
 
@@ -54,10 +58,14 @@ interface MapViewProps {
   onMapClick: (latlng: LatLng) => void;
   onPathUpdate: (path: LatLng[]) => void;
   onDrawEnd?: () => void;
+  onImpactDrag?: (latlng: LatLng) => void;
   vehicleLabels?: string[];
   centerOverride?: LatLng | null;
+  panToPoint?: LatLng | null;
+  basePath?: LatLng[];
   useSatellite?: boolean;
   entitySticker?: string | null;
+  useCarCursor?: boolean;
 }
 
 export function MapView({
@@ -71,10 +79,14 @@ export function MapView({
   onMapClick,
   onPathUpdate,
   onDrawEnd,
+  onImpactDrag,
   vehicleLabels = ["You", "Other"],
   centerOverride,
+  panToPoint,
+  basePath = [],
   useSatellite = false,
   entitySticker,
+  useCarCursor = false,
 }: MapViewProps) {
   const mapRef = useRef<google.maps.Map | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -84,11 +96,13 @@ export function MapView({
 
   // Refs for stable access in event handlers
   const modeRef = useRef(mode);
+  const basePathRef = useRef(basePath);
   const onMapClickRef = useRef(onMapClick);
   const onPathUpdateRef = useRef(onPathUpdate);
   const onDrawEndRef = useRef(onDrawEnd);
 
   useEffect(() => { modeRef.current = mode; }, [mode]);
+  useEffect(() => { basePathRef.current = basePath; }, [basePath]);
   useEffect(() => { onMapClickRef.current = onMapClick; }, [onMapClick]);
   useEffect(() => { onPathUpdateRef.current = onPathUpdate; }, [onPathUpdate]);
   useEffect(() => { onDrawEndRef.current = onDrawEnd; }, [onDrawEnd]);
@@ -134,8 +148,15 @@ export function MapView({
     isDrawingRef.current = true;
     const point = pixelToLatLng(clientX, clientY);
     if (point) {
-      drawPointsRef.current = [point];
-      onPathUpdateRef.current([point]);
+      const base = basePathRef.current;
+      if (base.length > 0) {
+        // Adjust mode: continue from existing path
+        drawPointsRef.current = [...base, point];
+        onPathUpdateRef.current([...base, point]);
+      } else {
+        drawPointsRef.current = [point];
+        onPathUpdateRef.current([point]);
+      }
     }
   }, [pixelToLatLng]);
 
@@ -214,6 +235,16 @@ export function MapView({
     }
   }, [isDrawMode]);
 
+  // Pan to a specific point when requested (e.g. center on impact before drawing)
+  // Compare by value to avoid re-panning on every render
+  const panToLat = panToPoint?.lat ?? null;
+  const panToLng = panToPoint?.lng ?? null;
+  useEffect(() => {
+    if (panToLat !== null && panToLng !== null && mapRef.current) {
+      mapRef.current.panTo({ lat: panToLat, lng: panToLng });
+    }
+  }, [panToLat, panToLng]);
+
   // Handle taps for placement modes only
   const handleMapClick = useCallback(
     (e: google.maps.MapMouseEvent) => {
@@ -288,6 +319,12 @@ export function MapView({
             icon={IMPACT_PULSE_ICON}
             title="Impact point"
             zIndex={100}
+            draggable={mode === "place-impact" || mode === "idle"}
+            onDragEnd={(e) => {
+              if (e.latLng && onImpactDrag) {
+                onImpactDrag({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+              }
+            }}
           />
         )}
 
@@ -309,6 +346,12 @@ export function MapView({
             }}
             title="Collision object"
             zIndex={100}
+            draggable={mode === "place-impact" || mode === "idle"}
+            onDragEnd={(e) => {
+              if (e.latLng && onImpactDrag) {
+                onImpactDrag({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+              }
+            }}
           />
         )}
 
@@ -423,7 +466,10 @@ export function MapView({
       <div
         ref={overlayRef}
         className={`absolute inset-0 ${isDrawMode ? "z-10" : "-z-10 pointer-events-none"}`}
-        style={{ touchAction: "none" }}
+        style={{
+          touchAction: "none",
+          cursor: isDrawMode && useCarCursor ? CAR_CURSOR : undefined,
+        }}
       />
 
       {/* Custom zoom controls — above drawing overlay */}
